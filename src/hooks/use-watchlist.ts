@@ -4,9 +4,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { primeContract } from '../lib/contracts-cache';
 import {
+    createWatchlist,
     fetchContract,
     fetchSnapshots,
+    fetchWatchlists,
     subscribeQuote,
+    syncWatchlist,
 } from '../lib/shioaji';
 import { registerCodeAlias } from '../lib/stream';
 import type { ContractInfo, SecurityType } from '../lib/types/contract';
@@ -27,6 +30,7 @@ const DEFAULT_SYMBOLS: { code: string; type: SecurityType }[] = [
 ];
 
 const STORAGE_KEY = 'sj-pro-watchlist';
+const SERVER_LIST_NAME = 'shioaji-pro-v2';
 
 function loadSaved(): { code: string; type: SecurityType }[] {
     try {
@@ -47,6 +51,8 @@ export function useWatchlist() {
     const subscribed = useRef(new Set<string>());
     const initStarted = useRef(false);
     const initDone = useRef(false);
+    const serverListId = useRef<string | null>(null);
+    const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const addSymbol = useCallback(
         async (code: string, type: SecurityType = 'STK') => {
@@ -100,13 +106,49 @@ export function useWatchlist() {
                 })),
             ),
         );
+        // best-effort cloud sync to the server watchlist
+        if (syncTimer.current) clearTimeout(syncTimer.current);
+        syncTimer.current = setTimeout(() => {
+            const contracts = items.map((i) => i.contract);
+            if (serverListId.current) {
+                syncWatchlist(serverListId.current, contracts).catch(
+                    () => undefined,
+                );
+            } else {
+                createWatchlist(SERVER_LIST_NAME, contracts)
+                    .then((wl) => {
+                        serverListId.current = wl.id;
+                    })
+                    .catch(() => undefined);
+            }
+        }, 2000);
     }, [items]);
 
     useEffect(() => {
         if (initStarted.current) return;
         initStarted.current = true;
         (async () => {
-            const saved = loadSaved();
+            const local = loadSaved();
+            let saved = local;
+            // cloud list is a seed when local storage is empty; local wins
+            // otherwise (server 1.5.2 watchlist update routes are broken, so
+            // the cloud copy can be stale)
+            try {
+                const lists = await fetchWatchlists();
+                const mine = lists.find((l) => l.name === SERVER_LIST_NAME);
+                if (mine) {
+                    serverListId.current = mine.id;
+                    const hasLocal = !!localStorage.getItem(STORAGE_KEY);
+                    if (!hasLocal && mine.contracts.length > 0) {
+                        saved = mine.contracts.map((c) => ({
+                            code: c.code,
+                            type: c.security_type,
+                        }));
+                    }
+                }
+            } catch {
+                // offline from server watchlists — local copy is fine
+            }
             for (const s of saved) {
                 try {
                     await addSymbol(s.code, s.type);

@@ -125,6 +125,19 @@ export const cancelBtn = style({
     },
 });
 
+export const qtyInline = style({
+    width: '3.4rem',
+    fontFamily: vars.font.mono,
+    fontSize: '0.68rem',
+    textAlign: 'right',
+    color: vars.color.foreground,
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.accent}`,
+    borderRadius: vars.radius.sm,
+    padding: '1px 4px',
+    outline: 'none',
+});
+
 export const emptyState = style({
     padding: vars.space.lg,
     textAlign: 'center',

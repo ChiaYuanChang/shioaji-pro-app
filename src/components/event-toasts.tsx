@@ -1,6 +1,7 @@
 // src/components/event-toasts.tsx — order/deal event notifications (SSE)
 
 import { useEffect, useRef, useState } from 'react';
+import { playAlert, playDeal, playError, playOrder } from '../lib/sounds';
 import { onOrderEvent } from '../lib/stream';
 import { onNotice } from '../lib/trade';
 import type { OrderEventData } from '../lib/types/order';
@@ -46,10 +47,16 @@ export function EventToasts({ onEvent }: { onEvent?: () => void }) {
         const offOrder = onOrderEvent((ev) => {
             const d = describe(ev);
             push(d.title, d.body);
+            const op = ev.operation?.op_type ?? '';
+            if (op === 'Deal' || ev.price !== undefined) playDeal();
+            else playOrder();
             onEventRef.current?.();
         });
         const offNotice = onNotice((n) => {
             push(n.title, n.body);
+            if (n.kind === 'err') playError();
+            else if (n.title.includes('警示')) playAlert();
+            else if (n.kind === 'ok') playOrder();
             if (n.kind === 'ok') onEventRef.current?.();
         });
         return () => {

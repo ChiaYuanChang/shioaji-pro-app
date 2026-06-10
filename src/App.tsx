@@ -12,20 +12,29 @@ import * as styles from './App.css';
 import * as grid from './grid.css';
 import { BottomDock } from './components/bottom-dock';
 import { CandleChart } from './components/candle-chart';
+import { CommandPalette } from './components/command-palette';
 import { DepthLadder } from './components/depth-ladder';
 import { EventToasts } from './components/event-toasts';
 import { FlashOrder } from './components/flash-order';
 import { HudHeader } from './components/hud-header';
+import { OptionChain } from './components/option-chain';
 import { OrderTicket } from './components/order-ticket';
+import { ChipsCard } from './components/chips-card';
+import { PnlPanel } from './components/pnl-panel';
+import { VolProfile } from './components/vol-profile';
+import { ReplayPanel } from './components/replay-panel';
+import { DepthMap } from './components/depth-map';
 import { PanelChrome } from './components/panel-chrome';
 import { QuoteBoard } from './components/quote-board';
 import { ScannerPanel } from './components/scanner-panel';
 import { TickTape } from './components/tick-tape';
 import { Watchlist } from './components/watchlist';
 import * as panel from './components/panel.css';
+import { useHotkeys } from './hooks/use-hotkeys';
 import { usePoll } from './hooks/use-poll';
 import { useWatchlist } from './hooks/use-watchlist';
 import { ensureContract, useContract } from './lib/contracts-cache';
+import { reportDailyPnl } from './lib/risk';
 import {
     fetchAccountBalance,
     fetchMargin,
@@ -51,6 +60,24 @@ import {
 } from './lib/workspace';
 
 const GRID_COLS = 24;
+
+const POPOUT_TYPES: ReadonlySet<string> = new Set([
+    'chart',
+    'depth',
+    'ticket',
+    'tape',
+    'flash',
+    'chips',
+    'volprofile',
+    'optchain',
+    'pnl',
+    'replay',
+    'depthmap',
+]);
+
+const popoutQuery = new URLSearchParams(window.location.search);
+const POPOUT_TYPE = popoutQuery.get('popout') as BlockType | null;
+const POPOUT_CODE = popoutQuery.get('code') || null;
 
 // resolves a block's contract: pinned code (contract cache) or global selection
 function useBlockContract(
@@ -133,6 +160,34 @@ function BlockBody({
             ) : (
                 <BlockPlaceholder />
             );
+        case 'pnl':
+            return <PnlPanel />;
+        case 'chips':
+            return contract ? (
+                <ChipsCard contract={contract} />
+            ) : (
+                <BlockPlaceholder />
+            );
+        case 'volprofile':
+            return contract ? (
+                <VolProfile contract={contract} />
+            ) : (
+                <BlockPlaceholder />
+            );
+        case 'optchain':
+            return <OptionChain />;
+        case 'replay':
+            return contract ? (
+                <ReplayPanel contract={contract} />
+            ) : (
+                <BlockPlaceholder />
+            );
+        case 'depthmap':
+            return contract ? (
+                <DepthMap contract={contract} />
+            ) : (
+                <BlockPlaceholder />
+            );
     }
 }
 
@@ -168,9 +223,114 @@ function BlockView(props: BlockViewProps) {
                 currentCode={selected?.code ?? null}
                 onPinChange={(pin) => onPinChange(block.id, pin)}
                 onRemove={() => onRemove(block.id)}
+                onPopout={
+                    POPOUT_TYPES.has(block.type)
+                        ? () => {
+                              const qs = new URLSearchParams({
+                                  popout: block.type,
+                                  code: contract?.code ?? '',
+                              });
+                              window.open(
+                                  `${window.location.pathname}?${qs}`,
+                                  `sj-popout-${block.id}`,
+                                  'width=900,height=620,menubar=no,toolbar=no',
+                              );
+                          }
+                        : undefined
+                }
             />
             <BlockBody {...bodyProps} block={block} contract={contract} />
         </section>
+    );
+}
+
+function PopoutView({
+    type,
+    code,
+}: {
+    type: BlockType;
+    code: string | null;
+}) {
+    const contract = useContract(code);
+    useEffect(() => {
+        if (code) ensureContract(code).catch(() => undefined);
+    }, [code]);
+    const tradesPoll = usePoll<Trade[]>(
+        useCallback(async () => {
+            const [s, f] = await Promise.allSettled([
+                fetchTrades('S'),
+                fetchTrades('F'),
+            ]);
+            return [
+                ...(s.status === 'fulfilled' ? s.value : []),
+                ...(f.status === 'fulfilled' ? f.value : []),
+            ];
+        }, []),
+        8000,
+    );
+    const meta = BLOCK_META[type];
+
+    let body: React.ReactNode = <BlockPlaceholder />;
+    if (type === 'pnl') body = <PnlPanel />;
+    else if (type === 'optchain') body = <OptionChain />;
+    else if (contract) {
+        switch (type) {
+            case 'chart':
+                body = (
+                    <>
+                        <QuoteBoard contract={contract} />
+                        <CandleChart
+                            contract={contract}
+                            trades={tradesPoll.data ?? []}
+                            onOrdersChanged={tradesPoll.refresh}
+                        />
+                    </>
+                );
+                break;
+            case 'depth':
+                body = <DepthLadder code={contract.code} />;
+                break;
+            case 'ticket':
+                body = (
+                    <OrderTicket
+                        contract={contract}
+                        onPlaced={tradesPoll.refresh}
+                    />
+                );
+                break;
+            case 'tape':
+                body = <TickTape contract={contract} />;
+                break;
+            case 'flash':
+                body = <FlashOrder contract={contract} />;
+                break;
+            case 'chips':
+                body = <ChipsCard contract={contract} />;
+                break;
+            case 'volprofile':
+                body = <VolProfile contract={contract} />;
+                break;
+            case 'replay':
+                body = <ReplayPanel contract={contract} />;
+                break;
+            case 'depthmap':
+                body = <DepthMap contract={contract} />;
+                break;
+            default:
+                break;
+        }
+    }
+
+    return (
+        <div className={styles.shell}>
+            <EventToasts />
+            <section className={panel.panel} style={{ flex: 1, margin: 6 }}>
+                <PanelChrome
+                    title={`${meta.label}${contract ? ` · ${contract.code}` : ''}`}
+                />
+                {body}
+            </section>
+        </div>
     );
 }
 
@@ -189,15 +349,18 @@ export default function App() {
         }
     }, [items, selected]);
 
-    const isFutures =
-        selected?.security_type === 'FUT' || selected?.security_type === 'OPT';
-
-    // portfolio polling
+    // portfolio polling (stock + futures merged)
     const positionsPoll = usePoll<Position[]>(
-        useCallback(
-            () => fetchPositions(isFutures ? 'F' : 'S').catch(() => []),
-            [isFutures],
-        ),
+        useCallback(async () => {
+            const [st, fu] = await Promise.allSettled([
+                fetchPositions('S'),
+                fetchPositions('F'),
+            ]);
+            return [
+                ...(st.status === 'fulfilled' ? st.value : []),
+                ...(fu.status === 'fulfilled' ? fu.value : []),
+            ];
+        }, []),
         10000,
     );
     const tradesPoll = usePoll<Trade[]>(
@@ -223,6 +386,16 @@ export default function App() {
         tradesPoll.refresh();
         positionsPoll.refresh();
     }, [tradesPoll, positionsPoll]);
+
+    // feed risk engine: unrealized position P&L + futures settle P&L
+    useEffect(() => {
+        const unrealized = (positionsPoll.data ?? []).reduce(
+            (sum, p) => sum + (p.pnl || 0),
+            0,
+        );
+        const settle = marginPoll.data?.future_settle_profitloss ?? 0;
+        reportDailyPnl(unrealized + settle);
+    }, [positionsPoll.data, marginPoll.data]);
 
     const selectByCode = useCallback(
         async (code: string) => {
@@ -356,6 +529,28 @@ export default function App() {
         [profiles],
     );
 
+    const [paletteOpen, setPaletteOpen] = useState(false);
+    const openPalette = useCallback(() => setPaletteOpen(true), []);
+    useHotkeys({
+        onOpenPalette: openPalette,
+        onAfterCancelAll: refreshTrading,
+    });
+
+    const jumpToCode = useCallback(
+        async (code: string) => {
+            const existing = items.find((i) => i.contract.code === code);
+            if (existing) {
+                setSelected(existing.contract);
+                return;
+            }
+            const c = (await addSymbol(code, 'STK').catch(() =>
+                addSymbol(code, 'FUT'),
+            )) as ContractInfo;
+            setSelected(c);
+        },
+        [items, addSymbol],
+    );
+
     const addableTypes = useMemo(
         () =>
             (Object.keys(BLOCK_META) as BlockType[]).map((type) => ({
@@ -369,6 +564,10 @@ export default function App() {
     );
 
     const booting = loading && items.length === 0;
+
+    if (POPOUT_TYPE && POPOUT_TYPES.has(POPOUT_TYPE)) {
+        return <PopoutView type={POPOUT_TYPE} code={POPOUT_CODE} />;
+    }
 
     const watchlistProps = {
         items,
@@ -397,6 +596,11 @@ export default function App() {
                 onResetWorkspace={resetWorkspace}
             />
             <EventToasts onEvent={refreshTrading} />
+            <CommandPalette
+                open={paletteOpen}
+                onClose={() => setPaletteOpen(false)}
+                onJump={jumpToCode}
+            />
 
             <div className={grid.gridWrap} ref={containerRef}>
                 {booting && (

@@ -182,6 +182,13 @@ export const execBtn = styleVariants({
     ],
 });
 
+export const costRow = style({
+    fontFamily: vars.font.mono,
+    fontSize: '0.62rem',
+    color: vars.color.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+});
+
 export const feedback = style({
     fontFamily: vars.font.mono,
     fontSize: '0.68rem',

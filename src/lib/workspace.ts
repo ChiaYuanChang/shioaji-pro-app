@@ -10,7 +10,13 @@ export type BlockType =
     | 'depth'
     | 'ticket'
     | 'tape'
-    | 'flash';
+    | 'flash'
+    | 'pnl'
+    | 'chips'
+    | 'volprofile'
+    | 'optchain'
+    | 'replay'
+    | 'depthmap';
 
 export interface Block {
     id: string;
@@ -85,6 +91,42 @@ export const BLOCK_META: Record<
         pinnable: true,
         singleton: false,
         defaultSize: { w: 5, h: 14, minW: 4, minH: 8 },
+    },
+    pnl: {
+        label: '損益分析',
+        pinnable: false,
+        singleton: true,
+        defaultSize: { w: 8, h: 8, minW: 6, minH: 6 },
+    },
+    chips: {
+        label: '籌碼資訊',
+        pinnable: true,
+        singleton: false,
+        defaultSize: { w: 5, h: 8, minW: 4, minH: 5 },
+    },
+    volprofile: {
+        label: '分價量表',
+        pinnable: true,
+        singleton: false,
+        defaultSize: { w: 5, h: 12, minW: 4, minH: 6 },
+    },
+    optchain: {
+        label: '選擇權 T 字',
+        pinnable: false,
+        singleton: true,
+        defaultSize: { w: 10, h: 14, minW: 8, minH: 8 },
+    },
+    replay: {
+        label: '行情回放',
+        pinnable: true,
+        singleton: false,
+        defaultSize: { w: 10, h: 10, minW: 6, minH: 6 },
+    },
+    depthmap: {
+        label: '委託簿熱圖',
+        pinnable: true,
+        singleton: false,
+        defaultSize: { w: 8, h: 9, minW: 5, minH: 6 },
     },
 };
 

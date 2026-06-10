@@ -1,7 +1,9 @@
 // src/components/bottom-dock.tsx — positions / orders / account tabs
 
 import { useState } from 'react';
-import { cancelOrder } from '../lib/shioaji';
+import { ensureContract } from '../lib/contracts-cache';
+import { cancelOrder, updateOrderQty } from '../lib/shioaji';
+import { notify, placeQuickOrder } from '../lib/trade';
 import type { Trade } from '../lib/types/order';
 import type {
     AccountBalance,
@@ -33,7 +35,39 @@ function statusKind(status: string): 'ok' | 'pending' | 'bad' {
     return 'bad';
 }
 
-function PositionsTable({ positions }: { positions: Position[] }) {
+function PositionsTable({
+    positions,
+    onChanged,
+}: {
+    positions: Position[];
+    onChanged: () => void;
+}) {
+    const [busyCode, setBusyCode] = useState<string | null>(null);
+    const act = async (p: Position, mode: 'close' | 'reverse') => {
+        if (busyCode) return;
+        setBusyCode(p.code);
+        try {
+            const contract = await ensureContract(p.code);
+            const exit = p.direction === 'Buy' ? 'Sell' : 'Buy';
+            const qty =
+                mode === 'close' ? p.quantity : p.quantity * 2;
+            const trade = await placeQuickOrder(contract, exit, null, qty);
+            notify({
+                kind: 'ok',
+                title: mode === 'close' ? '⏹ 平倉單已送出' : '🔄 反手單已送出',
+                body: `${p.code} 市價${exit === 'Buy' ? '買' : '賣'} ${qty} (${trade.status.status})`,
+            });
+            onChanged();
+        } catch (e) {
+            notify({
+                kind: 'err',
+                title: mode === 'close' ? '平倉失敗' : '反手失敗',
+                body: e instanceof Error ? e.message : String(e),
+            });
+        } finally {
+            setBusyCode(null);
+        }
+    };
     if (positions.length === 0) {
         return <div className={styles.emptyState}>NO OPEN POSITIONS · 無持倉</div>;
     }
@@ -48,9 +82,10 @@ function PositionsTable({ positions }: { positions: Position[] }) {
                     <th className={styles.th}>成本</th>
                     <th className={styles.th}>現價</th>
                     <th className={styles.th}>損益</th>
-                    <th className={styles.th} style={{ width: '22%' }}>
+                    <th className={styles.th} style={{ width: '18%' }}>
                         損益分布
                     </th>
+                    <th className={styles.th} />
                 </tr>
             </thead>
             <tbody>
@@ -91,11 +126,97 @@ function PositionsTable({ positions }: { positions: Position[] }) {
                                     />
                                 </div>
                             </td>
+                            <td className={styles.td}>
+                                <button
+                                    className={styles.cancelBtn}
+                                    disabled={busyCode === p.code}
+                                    title='市價沖銷此倉位'
+                                    onClick={() => act(p, 'close')}
+                                >
+                                    平
+                                </button>{' '}
+                                <button
+                                    className={styles.cancelBtn}
+                                    disabled={busyCode === p.code}
+                                    title='市價反向兩倍（翻倉）'
+                                    onClick={() => act(p, 'reverse')}
+                                >
+                                    反
+                                </button>
+                            </td>
                         </tr>
                     );
                 })}
             </tbody>
         </table>
+    );
+}
+
+function QtyEditor({
+    trade,
+    onChanged,
+}: {
+    trade: Trade;
+    onChanged: () => void;
+}) {
+    const [editing, setEditing] = useState(false);
+    const [val, setVal] = useState('');
+    if (!editing) {
+        return (
+            <button
+                className={styles.cancelBtn}
+                title='減量（輸入新數量）'
+                onClick={() => {
+                    setVal(
+                        String(
+                            trade.order.quantity -
+                                trade.status.deal_quantity,
+                        ),
+                    );
+                    setEditing(true);
+                }}
+            >
+                改量
+            </button>
+        );
+    }
+    return (
+        <input
+            autoFocus
+            className={styles.qtyInline}
+            value={val}
+            inputMode='numeric'
+            onChange={(e) => setVal(e.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => {
+                if (e.key === 'Escape') setEditing(false);
+                if (e.key === 'Enter') {
+                    const q = Number(val);
+                    if (Number.isInteger(q) && q >= 1) {
+                        updateOrderQty(trade.order.id, q)
+                            .then(() => {
+                                notify({
+                                    kind: 'ok',
+                                    title: '✏️ 改量已送出',
+                                    body: `${trade.contract.code} → ${q}（僅能減量）`,
+                                });
+                                onChanged();
+                            })
+                            .catch((err) =>
+                                notify({
+                                    kind: 'err',
+                                    title: '改量失敗',
+                                    body:
+                                        err instanceof Error
+                                            ? err.message
+                                            : String(err),
+                                }),
+                            );
+                    }
+                    setEditing(false);
+                }
+            }}
+        />
     );
 }
 
@@ -179,15 +300,25 @@ function OrdersTable({
                             </td>
                             <td className={styles.td}>
                                 {ACTIVE_STATUSES.has(st) && (
-                                    <button
-                                        className={styles.cancelBtn}
-                                        disabled={cancelling === t.order.id}
-                                        onClick={() => doCancel(t.order.id)}
-                                    >
-                                        {cancelling === t.order.id
-                                            ? '…'
-                                            : 'CANCEL'}
-                                    </button>
+                                    <>
+                                        <QtyEditor
+                                            trade={t}
+                                            onChanged={onChanged}
+                                        />{' '}
+                                        <button
+                                            className={styles.cancelBtn}
+                                            disabled={
+                                                cancelling === t.order.id
+                                            }
+                                            onClick={() =>
+                                                doCancel(t.order.id)
+                                            }
+                                        >
+                                            {cancelling === t.order.id
+                                                ? '…'
+                                                : 'CANCEL'}
+                                        </button>
+                                    </>
                                 )}
                             </td>
                         </tr>
@@ -308,7 +439,10 @@ export function BottomDock({
             </div>
             <div className={panel.panelBody}>
                 {tab === 'positions' && (
-                    <PositionsTable positions={positions} />
+                    <PositionsTable
+                        positions={positions}
+                        onChanged={onTradesChanged}
+                    />
                 )}
                 {tab === 'orders' && (
                     <OrdersTable trades={trades} onChanged={onTradesChanged} />

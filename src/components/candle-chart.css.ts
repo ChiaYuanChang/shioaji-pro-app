@@ -97,6 +97,51 @@ export const qtyInput = style({
     ':focus': { borderColor: vars.color.accent },
 });
 
+export const indBackdrop = style({
+    position: 'fixed',
+    inset: 0,
+    zIndex: 90,
+});
+
+export const indMenu = style({
+    position: 'absolute',
+    top: 'calc(100% + 4px)',
+    right: 0,
+    zIndex: 91,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1px',
+    width: '9rem',
+    background: vars.color.panelRaised,
+    border: `1px solid ${vars.color.borderBright}`,
+    borderRadius: vars.radius.md,
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+    padding: '4px',
+});
+
+export const indItem = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontFamily: vars.font.mono,
+    fontSize: '0.66rem',
+    textAlign: 'left',
+    padding: '3px 8px',
+    cursor: 'pointer',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: vars.radius.sm,
+    color: vars.color.foreground,
+    ':hover': { background: vars.color.muted },
+});
+
+export const indSwatch = style({
+    width: '10px',
+    height: '3px',
+    borderRadius: '1px',
+    flexShrink: 0,
+});
+
 export const modeHint = style({
     position: 'absolute',
     top: '8px',

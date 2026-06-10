@@ -6,6 +6,7 @@ import {
     ColorType,
     createChart,
     HistogramSeries,
+    LineSeries,
     type IChartApi,
     type IPriceLine,
     type ISeriesApi,
@@ -13,6 +14,7 @@ import {
 } from 'lightweight-charts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuote } from '../hooks/use-stream';
+import { bollinger, ema, sma, vwap } from '../lib/indicators';
 import { cancelOrder, fetchKbars, updateOrderPrice } from '../lib/shioaji';
 import { setPickedPrice } from '../lib/price-sync';
 import { notify, placeQuickOrder } from '../lib/trade';
@@ -44,7 +46,7 @@ const TIMEFRAMES = [
     { label: '1D', minutes: 1440, days: 365 },
 ] as const;
 
-type TradeMode = 'observe' | 'buy' | 'sell' | 'stop' | 'take';
+type TradeMode = 'observe' | 'buy' | 'sell' | 'stop' | 'take' | 'alert';
 
 const TRADE_MODES: { key: TradeMode; label: string }[] = [
     { key: 'observe', label: '游標' },
@@ -52,7 +54,28 @@ const TRADE_MODES: { key: TradeMode; label: string }[] = [
     { key: 'sell', label: '點價賣' },
     { key: 'stop', label: '停損' },
     { key: 'take', label: '停利' },
+    { key: 'alert', label: '警示' },
 ];
+
+const INDICATORS: { key: string; label: string; color: string }[] = [
+    { key: 'ma5', label: 'MA5', color: '#e0a43c' },
+    { key: 'ma10', label: 'MA10', color: '#3d8bff' },
+    { key: 'ma20', label: 'MA20', color: '#b06fff' },
+    { key: 'ma60', label: 'MA60', color: '#7e8798' },
+    { key: 'ema12', label: 'EMA12', color: '#19b6c9' },
+    { key: 'bb', label: 'BB(20,2)', color: '#8b94a7' },
+    { key: 'vwap', label: 'VWAP', color: '#f5f7fa' },
+];
+
+function loadIndicators(): Set<string> {
+    try {
+        const raw = localStorage.getItem('sj-pro-indicators');
+        if (raw) return new Set(JSON.parse(raw));
+    } catch {
+        // defaults
+    }
+    return new Set();
+}
 
 export function CandleChart({
     contract,
@@ -77,6 +100,11 @@ export function CandleChart({
     const themeKey = `${themeSettings.mode}-${themeSettings.convention}`;
     const [mode, setMode] = useState<TradeMode>('observe');
     const [tradeQty, setTradeQty] = useState(1);
+    const [indicators, setIndicators] = useState<Set<string>>(loadIndicators);
+    const [indMenuOpen, setIndMenuOpen] = useState(false);
+    const [dataVersion, setDataVersion] = useState(0);
+    const barsRef = useRef<Candle[]>([]);
+    const indSeriesRef = useRef<ISeriesApi<'Line'>[]>([]);
     const triggers = useTriggers().filter((t) => t.code === contract.code);
     const workingOrders = useMemo(
         () =>
@@ -201,6 +229,17 @@ export function CandleChart({
                 return;
             }
             const below = price <= last;
+            if (m === 'alert') {
+                addTrigger({
+                    code: c.code,
+                    condition: below ? 'below' : 'above',
+                    price,
+                    action: 'Sell', // unused for alerts
+                    quantity: 0,
+                    kind: 'alert',
+                });
+                return;
+            }
             if (m === 'stop') {
                 addTrigger({
                     code: c.code,
@@ -307,6 +346,8 @@ export function CandleChart({
                     })),
                 );
                 lastBarRef.current = bars[bars.length - 1] ?? null;
+                barsRef.current = bars;
+                setDataVersion((v) => v + 1);
                 chartRef.current?.timeScale().scrollToRealTime();
             })
             .catch(() => setEmpty(true));
@@ -364,6 +405,71 @@ export function CandleChart({
             color: bar.close >= bar.open ? colors.upVol : colors.downVol,
         });
     }, [tick, contract.code, tf.minutes]);
+
+    // overlay indicators
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart) return;
+        for (const series of indSeriesRef.current) {
+            try {
+                chart.removeSeries(series);
+            } catch {
+                // already gone with chart teardown
+            }
+        }
+        indSeriesRef.current = [];
+        const bars = barsRef.current;
+        if (bars.length === 0) return;
+        const addLine = (
+            data: { time: number; value: number }[],
+            color: string,
+            width: 1 | 2 = 1,
+        ) => {
+            const series = chart.addSeries(LineSeries, {
+                color,
+                lineWidth: width,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false,
+            });
+            series.setData(
+                data.map((d) => ({
+                    time: d.time as UTCTimestamp,
+                    value: d.value,
+                })),
+            );
+            indSeriesRef.current.push(series);
+        };
+        for (const ind of INDICATORS) {
+            if (!indicators.has(ind.key)) continue;
+            if (ind.key.startsWith('ma')) {
+                addLine(sma(bars, Number(ind.key.slice(2))), ind.color);
+            } else if (ind.key === 'ema12') {
+                addLine(ema(bars, 12), ind.color);
+            } else if (ind.key === 'vwap') {
+                addLine(vwap(bars), ind.color, 2);
+            } else if (ind.key === 'bb') {
+                const b = bollinger(bars);
+                addLine(b.mid, ind.color);
+                addLine(b.upper, ind.color);
+                addLine(b.lower, ind.color);
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dataVersion, indicators]);
+
+    const toggleIndicator = (key: string) => {
+        setIndicators((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            localStorage.setItem(
+                'sj-pro-indicators',
+                JSON.stringify([...next]),
+            );
+            return next;
+        });
+    };
 
     // draw working-order price lines (buy=up color / sell=down color)
     const orderKey = JSON.stringify(
@@ -507,11 +613,19 @@ export function CandleChart({
         const lines = triggers.map((t) =>
             series.createPriceLine({
                 price: t.price,
-                color: t.kind === 'stop' ? '#e0a43c' : colors.crosshair,
+                color:
+                    t.kind === 'stop'
+                        ? '#e0a43c'
+                        : t.kind === 'alert'
+                          ? '#8b94a7'
+                          : colors.crosshair,
                 lineWidth: 1,
                 lineStyle: 2, // dashed
                 axisLabelVisible: true,
-                title: `${t.kind === 'stop' ? '停損' : '停利'}${t.action === 'Buy' ? '買' : '賣'}${t.quantity}`,
+                title:
+                    t.kind === 'alert'
+                        ? '警示'
+                        : `${t.kind === 'stop' ? '停損' : '停利'}${t.action === 'Buy' ? '買' : '賣'}${t.quantity}`,
             }),
         );
         return () => {
@@ -560,6 +674,44 @@ export function CandleChart({
                         if (Number.isInteger(v) && v >= 1) setTradeQty(v);
                     }}
                 />
+                <div style={{ position: 'relative' }}>
+                    <button
+                        className={
+                            styles.modeBtn[
+                                indicators.size > 0 ? 'active' : 'normal'
+                            ]
+                        }
+                        onClick={() => setIndMenuOpen((o) => !o)}
+                    >
+                        指標{indicators.size > 0 ? ` ${indicators.size}` : ''}
+                    </button>
+                    {indMenuOpen && (
+                        <>
+                            <div
+                                className={styles.indBackdrop}
+                                onClick={() => setIndMenuOpen(false)}
+                            />
+                            <div className={styles.indMenu}>
+                                {INDICATORS.map((ind) => (
+                                    <button
+                                        key={ind.key}
+                                        className={styles.indItem}
+                                        onClick={() =>
+                                            toggleIndicator(ind.key)
+                                        }
+                                    >
+                                        <span
+                                            className={styles.indSwatch}
+                                            style={{ background: ind.color }}
+                                        />
+                                        {ind.label}
+                                        {indicators.has(ind.key) && ' ✓'}
+                                    </button>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
             <div ref={hostRef} className={styles.chartHost}>
                 {empty && (
@@ -573,6 +725,7 @@ export function CandleChart({
                         {mode === 'sell' && '點擊圖表價位 → 限價賣出'}
                         {mode === 'stop' && '點擊價位掛停損（觸價市價單）'}
                         {mode === 'take' && '點擊價位掛停利（觸價市價單）'}
+                        {mode === 'alert' && '點擊價位設定到價警示（只通知不下單）'}
                     </div>
                 )}
                 {(workingOrders.length > 0 || triggers.length > 0) && (
@@ -632,10 +785,15 @@ export function CandleChart({
                         {triggers.map((t) => (
                             <div key={t.id} className={styles.triggerRow}>
                                 <span>
-                                    {t.kind === 'stop' ? '⛔' : '🎯'}{' '}
+                                    {t.kind === 'stop'
+                                        ? '⛔'
+                                        : t.kind === 'take'
+                                          ? '🎯'
+                                          : '🔔'}{' '}
                                     {t.condition === 'below' ? '≤' : '≥'}
-                                    {fmtPrice(t.price)} {t.action === 'Buy' ? '買' : '賣'}
-                                    {t.quantity}
+                                    {fmtPrice(t.price)}
+                                    {t.kind !== 'alert' &&
+                                        ` ${t.action === 'Buy' ? '買' : '賣'}${t.quantity}`}
                                 </span>
                                 <button
                                     className={styles.triggerRemove}

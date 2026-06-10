@@ -16,7 +16,8 @@ export interface TriggerOrder {
     price: number;
     action: Action;
     quantity: number;
-    kind: 'stop' | 'take';
+    kind: 'stop' | 'take' | 'alert';
+    group?: string; // OCO group — when one fires, siblings are cancelled
 }
 
 const STORAGE_KEY = 'sj-pro-triggers';
@@ -50,10 +51,19 @@ export function addTrigger(t: Omit<TriggerOrder, 'id'>): TriggerOrder {
     };
     triggers = [...triggers, trigger];
     persist();
+    const kindLabel =
+        trigger.kind === 'stop'
+            ? '⛔ 停損單已掛'
+            : trigger.kind === 'take'
+              ? '🎯 停利單已掛'
+              : '🔔 警示已設';
     notify({
         kind: 'info',
-        title: trigger.kind === 'stop' ? '⛔ 停損單已掛' : '🎯 停利單已掛',
-        body: `${trigger.code} 觸價 ${trigger.condition === 'below' ? '≤' : '≥'} ${trigger.price} → 市價${trigger.action === 'Buy' ? '買' : '賣'} ${trigger.quantity}`,
+        title: kindLabel,
+        body:
+            trigger.kind === 'alert'
+                ? `${trigger.code} 觸價 ${trigger.condition === 'below' ? '≤' : '≥'} ${trigger.price} 時通知`
+                : `${trigger.code} 觸價 ${trigger.condition === 'below' ? '≤' : '≥'} ${trigger.price} → 市價${trigger.action === 'Buy' ? '買' : '賣'} ${trigger.quantity}${trigger.group ? '（OCO）' : ''}`,
     });
     return trigger;
 }
@@ -81,14 +91,32 @@ async function fire(t: TriggerOrder, lastPrice: number) {
     if (firing.has(t.id)) return;
     firing.add(t.id);
     removeTrigger(t.id);
+    // OCO: cancel sibling triggers in the same group
+    if (t.group) {
+        const siblings = triggers.filter((x) => x.group === t.group);
+        for (const sib of siblings) removeTrigger(sib.id);
+        if (siblings.length > 0) {
+            notify({
+                kind: 'info',
+                title: 'OCO 互斥撤銷',
+                body: `${t.code} 另一邊觸價單已自動移除`,
+            });
+        }
+    }
+    if (t.kind === 'alert') {
+        notify({
+            kind: 'info',
+            title: '🔔 到價警示',
+            body: `${t.code} 現價 ${lastPrice} 已${t.condition === 'below' ? '跌破' : '突破'} ${t.price}`,
+        });
+        firing.delete(t.id);
+        return;
+    }
     try {
         const contract = await ensureContract(t.code);
-        const trade = await placeQuickOrder(
-            contract,
-            t.action,
-            null,
-            t.quantity,
-        );
+        const trade = await placeQuickOrder(contract, t.action, null, t.quantity, {
+            bypassRisk: true, // protective exit — never blocked by kill switch
+        });
         notify({
             kind: 'ok',
             title: t.kind === 'stop' ? '⛔ 停損觸發' : '🎯 停利觸發',

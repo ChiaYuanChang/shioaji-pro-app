@@ -12,6 +12,7 @@ export function PanelChrome({
     currentCode,
     onPinChange,
     onRemove,
+    onPopout,
     children,
 }: {
     title: string;
@@ -20,6 +21,7 @@ export function PanelChrome({
     currentCode?: string | null;
     onPinChange?: (pin: string | null) => void;
     onRemove?: () => void;
+    onPopout?: () => void;
     children?: React.ReactNode;
 }) {
     const [editCode, setEditCode] = useState(pin ?? '');
@@ -68,6 +70,15 @@ export function PanelChrome({
                         </button>
                     </>
                 ))}
+            {onPopout && (
+                <button
+                    className={styles.closeBtn}
+                    title='彈出為獨立視窗（多螢幕）'
+                    onClick={onPopout}
+                >
+                    ⧉
+                </button>
+            )}
             {onRemove && (
                 <button
                     className={styles.closeBtn}

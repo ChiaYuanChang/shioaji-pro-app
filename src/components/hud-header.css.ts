@@ -178,6 +178,45 @@ export const opt = styleVariants({
     ],
 });
 
+const killBase = style({
+    fontFamily: vars.font.display,
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    padding: '8px 0',
+    cursor: 'pointer',
+    borderRadius: vars.radius.sm,
+    border: '1px solid',
+    transition: 'all 0.12s',
+});
+
+export const killBtnOff = style([
+    killBase,
+    {
+        color: vars.color.danger,
+        borderColor: vars.color.border,
+        background: vars.color.inset,
+        ':hover': { borderColor: vars.color.danger },
+    },
+]);
+
+export const killBtnOn = style([
+    killBase,
+    {
+        color: '#fff',
+        borderColor: vars.color.danger,
+        background: vars.color.danger,
+        animation: 'pulse-glow 1.2s infinite',
+    },
+]);
+
+export const riskLabel = style({
+    fontSize: '0.66rem',
+    color: vars.color.mutedForeground,
+    width: '4.2rem',
+    flexShrink: 0,
+    alignSelf: 'center',
+});
+
 export const menuItem = style({
     fontFamily: vars.font.body,
     fontSize: '0.72rem',

@@ -101,9 +101,39 @@ function ingestBidAsk(bidask: SseBidAsk) {
     emitQuote(bidask.code);
 }
 
+// registry of every quote subscription made this session — replayed after
+// the SSE connection recovers (covers shioaji-server restarts)
+const subscriptionRegistry = new Map<string, Record<string, unknown>>();
+
+export function registerSubscription(body: {
+    security_type: string | null;
+    exchange: string | null;
+    code: string;
+    target_code: string | null;
+    quote_type: string;
+    intraday_odd: boolean;
+}) {
+    subscriptionRegistry.set(`${body.code}:${body.quote_type}`, body);
+}
+
+async function resubscribeAll() {
+    for (const body of subscriptionRegistry.values()) {
+        try {
+            await fetch(`${base}/api/v1/stream/subscribe`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+        } catch {
+            // server still down — next reconnect will retry
+        }
+    }
+}
+
 let es: EventSource | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryDelay = 1000;
+let everDown = false;
 
 function connect() {
     if (es) es.close();
@@ -113,6 +143,10 @@ function connect() {
     es.onopen = () => {
         retryDelay = 1000;
         setStatus('live');
+        if (everDown) {
+            everDown = false;
+            void resubscribeAll(); // server may have restarted — replay subs
+        }
     };
 
     for (const ev of ['tick_stk', 'tick_fop']) {
@@ -131,6 +165,7 @@ function connect() {
     });
 
     es.onerror = () => {
+        everDown = true;
         setStatus('down');
         es?.close();
         es = null;

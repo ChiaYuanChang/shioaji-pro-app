@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useStreamStatus } from '../hooks/use-stream';
+import {
+    getDailyPnl,
+    setRiskSettings,
+    useRiskSettings,
+} from '../lib/risk';
 import { fetchHealth, fetchInfo } from '../lib/shioaji';
+import { setSoundEnabled, soundEnabled } from '../lib/sounds';
 import {
     setThemeSettings,
     useThemeSettings,
@@ -11,6 +17,7 @@ import {
 } from '../lib/theme-store';
 import { fmtMoney } from '../lib/utils/format';
 import type { BlockType } from '../lib/workspace';
+import { MarketBar } from './market-bar';
 import * as panel from './panel.css';
 import * as styles from './hud-header.css';
 
@@ -64,6 +71,7 @@ function Menu({
 
 function ThemeSettings() {
     const settings = useThemeSettings();
+    const [sound, setSound] = useState(soundEnabled());
     return (
         <Menu label='主題'>
             {() => (
@@ -114,6 +122,92 @@ function ThemeSettings() {
                             ▼ -1.25 下跌
                         </span>
                     </div>
+                    <span className={styles.settingLabel}>音效 Sound</span>
+                    <button
+                        className={styles.opt[sound ? 'on' : 'off']}
+                        onClick={() => {
+                            setSoundEnabled(!sound);
+                            setSound(!sound);
+                        }}
+                    >
+                        {sound ? '🔉 成交/警示音效開啟' : '🔇 音效關閉'}
+                    </button>
+                </>
+            )}
+        </Menu>
+    );
+}
+
+function RiskMenu() {
+    const risk = useRiskSettings();
+    const dailyPnl = getDailyPnl();
+    return (
+        <Menu label={risk.locked ? '🔒 風控鎖定' : '風控'}>
+            {() => (
+                <>
+                    <button
+                        className={
+                            risk.locked
+                                ? styles.killBtnOn
+                                : styles.killBtnOff
+                        }
+                        onClick={() =>
+                            setRiskSettings({ locked: !risk.locked })
+                        }
+                    >
+                        {risk.locked
+                            ? '🔓 解除鎖定（恢復下單）'
+                            : '🔒 鎖定下單 Kill Switch'}
+                    </button>
+                    <span className={styles.settingLabel}>
+                        風控規則 Rules
+                    </span>
+                    <button
+                        className={
+                            styles.opt[risk.enabled ? 'on' : 'off']
+                        }
+                        onClick={() =>
+                            setRiskSettings({ enabled: !risk.enabled })
+                        }
+                    >
+                        {risk.enabled ? '✓ 規則啟用中' : '啟用風控規則'}
+                    </button>
+                    <div className={styles.saveRow}>
+                        <span className={styles.riskLabel}>單筆上限</span>
+                        <input
+                            className={styles.saveInput}
+                            inputMode='numeric'
+                            value={risk.maxQty || ''}
+                            placeholder='不限'
+                            onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isInteger(v) && v >= 0) {
+                                    setRiskSettings({ maxQty: v });
+                                }
+                            }}
+                        />
+                    </div>
+                    <div className={styles.saveRow}>
+                        <span className={styles.riskLabel}>日虧上限</span>
+                        <input
+                            className={styles.saveInput}
+                            inputMode='numeric'
+                            value={risk.maxDailyLoss || ''}
+                            placeholder='不限 (TWD)'
+                            onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isInteger(v) && v >= 0) {
+                                    setRiskSettings({ maxDailyLoss: v });
+                                }
+                            }}
+                        />
+                    </div>
+                    <span className={styles.emptyHint}>
+                        目前當日損益估算：{Math.round(dailyPnl).toLocaleString()}
+                        （持倉未實現＋期貨平倉）
+                        <br />
+                        停損/停利觸價單不受風控封鎖。
+                    </span>
                 </>
             )}
         </Menu>
@@ -300,6 +394,8 @@ export function HudHeader({
                     <span className={styles.prodBadge}>正式環境</span>
                 ))}
 
+            <MarketBar />
+
             <div className={styles.spacer} />
 
             {accBalance !== undefined && (
@@ -321,6 +417,7 @@ export function HudHeader({
                 <span>{STATUS_LABEL[streamStatus]}</span>
             </div>
 
+            <RiskMenu />
             <AddBlockMenu
                 addableTypes={addableTypes}
                 onAddBlock={onAddBlock}

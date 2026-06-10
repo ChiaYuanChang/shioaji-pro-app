@@ -1,6 +1,6 @@
 // src/lib/shioaji.ts
 
-import { apiGet, apiPost } from './api';
+import { apiGet, apiPost, apiPut } from './api';
 import type {
     ContractBase,
     ContractInfo,
@@ -28,6 +28,7 @@ import type {
     Margin,
     StockPosition,
 } from './types/portfolio';
+import { registerSubscription } from './stream';
 import type { HistoryTicks } from './types/tick';
 import { todayStr } from './utils/date';
 
@@ -128,12 +129,14 @@ export function subscribeQuote(
     contract: ContractBase,
     quoteType: QuoteTypeName,
 ) {
-    return apiPost<SubscriptionResponse>('/api/v1/stream/subscribe', {
+    const body = {
         ...contractKey(contract),
         target_code: contract.target_code ?? null,
         quote_type: quoteType,
         intraday_odd: false,
-    });
+    };
+    registerSubscription(body);
+    return apiPost<SubscriptionResponse>('/api/v1/stream/subscribe', body);
 }
 
 export function unsubscribeQuote(
@@ -178,6 +181,13 @@ export function updateOrderPrice(tradeId: string, price: number) {
     });
 }
 
+export function updateOrderQty(tradeId: string, quantity: number) {
+    return apiPost<Trade>('/api/v1/order/update_qty', {
+        trade_id: tradeId,
+        quantity,
+    });
+}
+
 export function fetchTrades(accountType: AccountTypeName) {
     return apiPost<Trade[]>('/api/v1/order/trades', {
         account_type: accountType,
@@ -202,5 +212,33 @@ export function fetchAccountBalance() {
 export function fetchMargin() {
     return apiPost<Margin>('/api/v1/portfolio/margin', {
         account_type: 'F',
+    });
+}
+
+// ---- server watchlists ----
+
+export interface ServerWatchlist {
+    id: string;
+    name: string;
+    contracts: { security_type: SecurityType; exchange: string; code: string }[];
+}
+
+export function fetchWatchlists() {
+    return apiGet<ServerWatchlist[]>('/api/v1/watchlist');
+}
+
+export function createWatchlist(
+    name: string,
+    contracts: ContractBase[],
+) {
+    return apiPost<ServerWatchlist>('/api/v1/watchlist', {
+        name,
+        contracts: contracts.map(contractKey),
+    });
+}
+
+export function syncWatchlist(id: string, contracts: ContractBase[]) {
+    return apiPut<ServerWatchlist>(`/api/v1/watchlist/${id}`, {
+        contracts: contracts.map(contractKey),
     });
 }
