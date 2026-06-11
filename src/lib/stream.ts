@@ -30,6 +30,12 @@ export function registerCodeAlias(actual: string, alias: string) {
         codeAlias.set(actual, alias);
     }
 }
+
+// resolve an actual contract code (e.g. TXFF6 from positions/orders) back
+// to the display alias the user is watching (e.g. TXFR1)
+export function getAliasFor(actualCode: string): string | undefined {
+    return codeAlias.get(actualCode);
+}
 let status: StreamStatus = 'connecting';
 let lastHeartbeat = 0;
 

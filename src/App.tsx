@@ -158,7 +158,12 @@ function BlockBody({
             );
         case 'flash':
             return contract ? (
-                <FlashOrder contract={contract} />
+                <FlashOrder
+                    contract={contract}
+                    trades={dockProps.trades}
+                    positions={dockProps.positions}
+                    onOrdersChanged={dockProps.onTradesChanged}
+                />
             ) : (
                 <BlockPlaceholder />
             );
@@ -264,6 +269,19 @@ function PopoutView({
         }, []),
         8000,
     );
+    const popoutPositionsPoll = usePoll<Position[]>(
+        useCallback(async () => {
+            const [st, fu] = await Promise.allSettled([
+                fetchPositions('S'),
+                fetchPositions('F'),
+            ]);
+            return [
+                ...(st.status === 'fulfilled' ? st.value : []),
+                ...(fu.status === 'fulfilled' ? fu.value : []),
+            ];
+        }, []),
+        10000,
+    );
     const meta = BLOCK_META[type];
 
     let body: React.ReactNode = <BlockPlaceholder />;
@@ -298,7 +316,17 @@ function PopoutView({
                 body = <TickTape contract={contract} />;
                 break;
             case 'flash':
-                body = <FlashOrder contract={contract} />;
+                body = (
+                    <FlashOrder
+                        contract={contract}
+                        trades={tradesPoll.data ?? []}
+                        positions={popoutPositionsPoll.data ?? []}
+                        onOrdersChanged={() => {
+                            tradesPoll.refresh();
+                            popoutPositionsPoll.refresh();
+                        }}
+                    />
+                );
                 break;
             case 'chips':
                 body = <ChipsCard contract={contract} />;

@@ -3,6 +3,8 @@
 import { style, styleVariants } from '@vanilla-extract/css';
 import { vars } from '../theme.css';
 
+const COLS = '2.4rem 1fr 4.8rem 1fr 2.4rem';
+
 export const wrap = style({
     display: 'flex',
     flexDirection: 'column',
@@ -20,16 +22,16 @@ export const controls = style({
 });
 
 export const qtyInput = style({
-    width: '3.4rem',
+    width: '2.8rem',
     fontFamily: vars.font.mono,
     fontSize: '0.78rem',
     fontWeight: 600,
-    textAlign: 'right',
+    textAlign: 'center',
     color: vars.color.foreground,
     background: vars.color.inset,
     border: `1px solid ${vars.color.border}`,
     borderRadius: vars.radius.sm,
-    padding: '2px 6px',
+    padding: '2px 4px',
     outline: 'none',
     ':focus': { borderColor: vars.color.accent },
 });
@@ -37,6 +39,21 @@ export const qtyInput = style({
 export const qtyLabel = style({
     fontSize: '0.64rem',
     color: vars.color.mutedForeground,
+});
+
+export const stepBtn = style({
+    fontFamily: vars.font.mono,
+    fontSize: '0.7rem',
+    width: '1.3rem',
+    height: '1.3rem',
+    lineHeight: 1,
+    cursor: 'pointer',
+    color: vars.color.mutedForeground,
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: 0,
+    ':hover': { color: vars.color.foreground },
 });
 
 const armBase = style({
@@ -49,6 +66,7 @@ const armBase = style({
     borderRadius: vars.radius.sm,
     border: '1px solid',
     transition: 'all 0.12s',
+    whiteSpace: 'nowrap',
 });
 
 export const armBtn = styleVariants({
@@ -71,6 +89,37 @@ export const armBtn = styleVariants({
     ],
 });
 
+const smallToggle = style({
+    fontFamily: vars.font.body,
+    fontSize: '0.64rem',
+    borderRadius: vars.radius.sm,
+    padding: '2px 8px',
+    cursor: 'pointer',
+    border: '1px solid',
+    whiteSpace: 'nowrap',
+});
+
+export const followBtn = styleVariants({
+    on: [
+        smallToggle,
+        {
+            color: vars.color.accent,
+            borderColor: vars.color.accent,
+            background: vars.color.accentDim,
+            fontWeight: 600,
+        },
+    ],
+    off: [
+        smallToggle,
+        {
+            color: vars.color.mutedForeground,
+            borderColor: vars.color.border,
+            background: 'transparent',
+            ':hover': { color: vars.color.foreground },
+        },
+    ],
+});
+
 export const recenterBtn = style({
     fontFamily: vars.font.body,
     fontSize: '0.64rem',
@@ -80,21 +129,103 @@ export const recenterBtn = style({
     borderRadius: vars.radius.sm,
     padding: '2px 8px',
     cursor: 'pointer',
+    whiteSpace: 'nowrap',
     ':hover': { color: vars.color.foreground },
 });
 
-export const ladder = style({
-    flex: 1,
-    minHeight: 0,
-    overflowY: 'auto',
-    fontFamily: vars.font.mono,
-    fontSize: '0.72rem',
-    fontVariantNumeric: 'tabular-nums',
+// ---- action bar (market orders / flatten / cancel-all) ----
+
+export const actionBar = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: vars.space.xs,
+    padding: `3px ${vars.space.sm}`,
+    borderBottom: `1px solid ${vars.color.border}`,
+    flexShrink: 0,
 });
+
+const mktBase = style({
+    flex: 1,
+    fontFamily: vars.font.display,
+    fontSize: '0.66rem',
+    fontWeight: 700,
+    padding: '3px 0',
+    cursor: 'pointer',
+    borderRadius: vars.radius.sm,
+    border: '1px solid',
+    transition: 'all 0.12s',
+});
+
+export const mktBtn = styleVariants({
+    buy: [
+        mktBase,
+        {
+            color: vars.color.up,
+            borderColor: vars.color.up,
+            background: vars.color.upDim,
+        },
+    ],
+    sell: [
+        mktBase,
+        {
+            color: vars.color.down,
+            borderColor: vars.color.down,
+            background: vars.color.downDim,
+        },
+    ],
+});
+
+export const flatBtn = style([
+    mktBase,
+    {
+        flex: '0 0 auto',
+        padding: '3px 10px',
+        color: vars.color.amber,
+        borderColor: vars.color.amber,
+        background: 'rgba(224, 164, 60, 0.08)',
+    },
+]);
+
+export const cancelAllBtn = style([
+    mktBase,
+    {
+        flex: '0 0 auto',
+        padding: '3px 10px',
+        color: vars.color.danger,
+        borderColor: vars.color.border,
+        background: vars.color.inset,
+        ':hover': { borderColor: vars.color.danger },
+        ':disabled': {
+            opacity: 0.4,
+            cursor: 'not-allowed',
+            borderColor: vars.color.border,
+        },
+    },
+]);
+
+// ---- position bar ----
+
+export const posBar = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: vars.space.sm,
+    padding: `2px ${vars.space.sm}`,
+    fontFamily: vars.font.mono,
+    fontSize: '0.66rem',
+    fontVariantNumeric: 'tabular-nums',
+    color: vars.color.mutedForeground,
+    borderBottom: `1px solid ${vars.color.border}`,
+    flexShrink: 0,
+});
+
+export const posLong = style({ color: vars.color.up, fontWeight: 600 });
+export const posShort = style({ color: vars.color.down, fontWeight: 600 });
+
+// ---- ladder ----
 
 export const headRow = style({
     display: 'grid',
-    gridTemplateColumns: '1fr 5rem 1fr',
+    gridTemplateColumns: COLS,
     fontFamily: vars.font.display,
     fontSize: '0.6rem',
     fontWeight: 600,
@@ -102,15 +233,31 @@ export const headRow = style({
     textAlign: 'center',
     padding: '3px 0',
     borderBottom: `1px solid ${vars.color.border}`,
-    position: 'sticky',
-    top: 0,
     background: vars.color.panel,
-    zIndex: 1,
+    flexShrink: 0,
+});
+
+// fixed window — no native scrolling; the wheel shifts the anchor in ticks
+export const ladderBody = style({
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
+    overflow: 'hidden',
+    fontFamily: vars.font.mono,
+    fontSize: '0.72rem',
+    fontVariantNumeric: 'tabular-nums',
+});
+
+export const waiting = style({
+    padding: vars.space.md,
+    fontSize: '0.68rem',
+    color: vars.color.mutedForeground,
+    textAlign: 'center',
 });
 
 const rowBase = style({
     display: 'grid',
-    gridTemplateColumns: '1fr 5rem 1fr',
+    gridTemplateColumns: COLS,
     height: '22px',
     alignItems: 'stretch',
     borderBottom: `1px solid rgba(127, 127, 127, 0.07)`,
@@ -131,6 +278,47 @@ const cellBase = style({
     alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
+});
+
+export const chipCell = style([
+    cellBase,
+    {
+        justifyContent: 'center',
+    },
+]);
+
+const chipBase = style({
+    fontFamily: vars.font.mono,
+    fontSize: '0.62rem',
+    fontWeight: 700,
+    lineHeight: 1,
+    minWidth: '1.7rem',
+    padding: '2px 3px',
+    cursor: 'pointer',
+    borderRadius: vars.radius.sm,
+    border: '1px solid',
+    transition: 'all 0.1s',
+});
+
+export const orderChip = styleVariants({
+    buy: [
+        chipBase,
+        {
+            color: vars.color.up,
+            borderColor: vars.color.up,
+            background: vars.color.upDim,
+            ':hover': { color: '#fff', background: vars.color.up },
+        },
+    ],
+    sell: [
+        chipBase,
+        {
+            color: vars.color.down,
+            borderColor: vars.color.down,
+            background: vars.color.downDim,
+            ':hover': { color: '#fff', background: vars.color.down },
+        },
+    ],
 });
 
 export const buyCell = style([
@@ -168,31 +356,82 @@ export const priceCell = style([
     cellBase,
     {
         justifyContent: 'center',
+        gap: '4px',
         fontWeight: 600,
         borderLeft: `1px solid ${vars.color.border}`,
         borderRight: `1px solid ${vars.color.border}`,
     },
 ]);
 
-export const volBar = style({
+export const bandUp = style({ color: vars.color.up });
+export const bandDown = style({ color: vars.color.down });
+
+// average-cost marker on the price cell
+export const avgMark = style({
+    boxShadow: `inset 3px 0 0 ${vars.color.amber}`,
+});
+
+export const lastVol = style({
+    fontSize: '0.58rem',
+    fontWeight: 400,
+    color: vars.color.mutedForeground,
+});
+
+const volBarBase = style({
     position: 'absolute',
     top: '3px',
     bottom: '3px',
     zIndex: 0,
     borderRadius: '2px',
+    background: 'currentcolor',
+    opacity: 0.18,
 });
+
+export const volBarBid = style([volBarBase, { right: 0 }]);
+export const volBarAsk = style([volBarBase, { left: 0 }]);
 
 export const cellText = style({
     position: 'relative',
     zIndex: 1,
 });
 
-export const lastTag = style({
-    fontSize: '0.58rem',
-    padding: '0 4px',
-    borderRadius: '2px',
-    marginLeft: '4px',
+// floating "back to last price" pill when price leaves the window
+const jumpBase = style({
+    position: 'absolute',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 5,
+    fontFamily: vars.font.mono,
+    fontSize: '0.66rem',
+    fontWeight: 600,
+    padding: '3px 12px',
+    cursor: 'pointer',
+    borderRadius: '999px',
+    color: vars.color.accent,
+    border: `1px solid ${vars.color.accent}`,
+    background: vars.color.panelRaised,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
+    whiteSpace: 'nowrap',
 });
+
+export const jumpBtn = styleVariants({
+    top: [jumpBase, { top: '6px' }],
+    bottom: [jumpBase, { bottom: '6px' }],
+});
+
+export const totalsRow = style({
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: `2px ${vars.space.sm}`,
+    fontFamily: vars.font.mono,
+    fontSize: '0.62rem',
+    fontVariantNumeric: 'tabular-nums',
+    borderTop: `1px solid ${vars.color.border}`,
+    flexShrink: 0,
+});
+
+export const totalBid = style({ color: vars.color.up });
+export const totalAsk = style({ color: vars.color.down });
 
 export const hint = style({
     padding: `2px ${vars.space.sm}`,
