@@ -8,6 +8,7 @@ import {
     useAccounts,
 } from '../lib/account-store';
 import { ensureContract } from '../lib/contracts-cache';
+import { maskAccountId, usePrivacyMode } from '../lib/privacy';
 import {
     cancelOrder,
     fetchSettlements,
@@ -458,6 +459,7 @@ function AccountPicker({
     onChanged: () => void;
 }) {
     const { accounts, selectedStock, selectedFutures } = useAccounts();
+    const priv = usePrivacyMode();
     useEffect(ensureAccounts, []);
     const list = accounts.filter((a) => a.account_type === type);
     if (list.length === 0) return null;
@@ -483,7 +485,8 @@ function AccountPicker({
                     key={`${a.broker_id}-${a.account_id}`}
                     value={`${a.broker_id}-${a.account_id}`}
                 >
-                    {type === 'S' ? '證' : '期'} {a.broker_id}-{a.account_id}
+                    {type === 'S' ? '證' : '期'} {a.broker_id}-
+                    {maskAccountId(a.account_id, priv)}
                 </option>
             ))}
         </select>

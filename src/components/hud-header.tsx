@@ -13,6 +13,12 @@ import {
     useRiskSettings,
 } from '../lib/risk';
 import { fetchHealth, fetchInfo } from '../lib/shioaji';
+import {
+    maskAccountId,
+    maskName,
+    setPrivacyMode,
+    usePrivacyMode,
+} from '../lib/privacy';
 import { setSoundEnabled, soundEnabled } from '../lib/sounds';
 import {
     setThemeSettings,
@@ -79,6 +85,7 @@ function Menu({
 function ThemeSettings() {
     const settings = useThemeSettings();
     const [sound, setSound] = useState(soundEnabled());
+    const priv = usePrivacyMode();
     return (
         <Menu label='主題'>
             {() => (
@@ -139,6 +146,16 @@ function ThemeSettings() {
                     >
                         {sound ? '🔉 成交/警示音效開啟' : '🔇 音效關閉'}
                     </button>
+                    <span className={styles.settingLabel}>
+                        隱私 Privacy
+                    </span>
+                    <button
+                        className={styles.opt[priv ? 'on' : 'off']}
+                        title='截圖/分享畫面時遮蔽帳號號碼與姓名'
+                        onClick={() => setPrivacyMode(!priv)}
+                    >
+                        {priv ? '🕶 帳號已遮蔽' : '顯示完整帳號'}
+                    </button>
                 </>
             )}
         </Menu>
@@ -147,6 +164,7 @@ function ThemeSettings() {
 
 function AccountMenu() {
     const { accounts, selectedStock, selectedFutures, loaded } = useAccounts();
+    const priv = usePrivacyMode();
     useEffect(ensureAccounts, []);
     if (!loaded || accounts.length === 0) return null;
     const groups: { label: string; type: 'S' | 'F'; selected: string }[] = [
@@ -197,8 +215,12 @@ function AccountMenu() {
                                             }}
                                             onClick={() => selectAccount(a)}
                                         >
-                                            {a.broker_id}-{a.account_id}（
-                                            {a.username}）
+                                            {a.broker_id}-
+                                            {maskAccountId(
+                                                a.account_id,
+                                                priv,
+                                            )}
+                                            （{maskName(a.username, priv)}）
                                         </button>
                                     );
                                 })}
