@@ -176,11 +176,33 @@ function connect() {
     };
 }
 
+// The shioaji server's daily maintenance (~08:22 TW) rebuilds its upstream
+// client and silently drops every market-data subscription while our SSE
+// connection stays up — watch last_maintenance and resubscribe when it moves.
+let lastMaintenance: string | null = null;
+
+async function watchMaintenance() {
+    try {
+        const res = await fetch(`${base}/api/v1/health`);
+        if (!res.ok) return;
+        const h = (await res.json()) as { last_maintenance?: string };
+        const lm = h.last_maintenance ?? null;
+        if (lastMaintenance !== null && lm !== lastMaintenance) {
+            await resubscribeAll();
+        }
+        lastMaintenance = lm;
+    } catch {
+        // server unreachable — SSE reconnect path handles resubscription
+    }
+}
+
 let started = false;
 export function ensureStream() {
     if (!started) {
         started = true;
         connect();
+        void watchMaintenance();
+        setInterval(watchMaintenance, 60000);
     }
 }
 

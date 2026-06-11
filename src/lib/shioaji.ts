@@ -131,7 +131,8 @@ export function subscribeQuote(
 ) {
     const body = {
         ...contractKey(contract),
-        target_code: contract.target_code ?? null,
+        // empty string must become null — the server 500s on target_code ""
+        target_code: contract.target_code || null,
         quote_type: quoteType,
         intraday_odd: false,
     };
@@ -145,7 +146,7 @@ export function unsubscribeQuote(
 ) {
     return apiPost<SubscriptionResponse>('/api/v1/stream/unsubscribe', {
         ...contractKey(contract),
-        target_code: contract.target_code ?? null,
+        target_code: contract.target_code || null,
         quote_type: quoteType,
         intraday_odd: false,
     });
