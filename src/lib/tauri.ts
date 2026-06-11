@@ -21,16 +21,22 @@ export interface SidecarResult {
     output: string;
 }
 
+// the CLI emits ANSI color escapes even when piped (sinotrade/shioaji#206)
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
+
 async function sidecar(
     args: string[],
     env?: Record<string, string>,
 ): Promise<SidecarResult> {
     const { Command } = await import('@tauri-apps/plugin-shell');
     const cmd = Command.sidecar('binaries/shioaji', args, {
-        env: env && Object.keys(env).length > 0 ? env : undefined,
+        env: { NO_COLOR: '1', ...env },
     });
     const out = await cmd.execute();
-    const text = `${out.stdout}\n${out.stderr}`.trim();
+    const text = `${out.stdout}\n${out.stderr}`
+        .replace(ANSI_RE, '')
+        .trim();
     return { ok: out.code === 0, output: text };
 }
 
