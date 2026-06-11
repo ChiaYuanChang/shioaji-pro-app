@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Shioaji Pro — Agent 交易時代的起點：完整開源的台股交易終端</title>
-<meta name="description" content="這個完整的台股交易終端從第一行到最後一行都由 coding agent 開發 — 為 agent 交易快速打底鋪路。在 Claude Code / Codex 裝上 shioaji skill 客製自己的交易介面，打造自己的版本時還能串接自己的交易 agent。" />
+<meta name="description" content="交易工具的誕生方式已經不一樣了 — 這個完整的台股交易終端全程由 coding agent 打造並開源。在 Claude Code / Codex 裝上 shioaji skill 客製自己的交易介面，打造自己的版本時還能串接自己的交易 agent。" />
 <meta property="og:title" content="Shioaji Pro — Agent 交易時代的起點" />
 <meta property="og:description" content="為 agent 交易鋪路的開源專案：用 Claude Code / Codex 加上 shioaji skill 客製你的交易介面，架構開放、未來可串接你自己的交易 agent — 這個終端就是能力證明。" />
 <meta property="og:image" content="https://sinotrade.github.io/shioaji-pro-app/screenshot-futures.png" />
@@ -59,6 +59,17 @@
 
   /* ---- hero ---- */
   .hero { padding: 72px 0 40px; text-align: center; }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 18px;
+  }
+  .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; text-align: left; }
+  @media (max-width: 720px) { .install-grid { grid-template-columns: 1fr; } }
   .hero h1 {
     font-size: clamp(2rem, 5vw, 3.2rem);
     font-weight: 800;
@@ -239,13 +250,16 @@
 
 <header class="hero">
   <div class="wrap">
+    <p class="kicker">The Agentic Trading Era</p>
     <h1>Agent 交易時代的起點<br /><span class="grad">一個完整開源的台股交易終端</span></h1>
     <p class="tag">
-      Shioaji Pro 是為 <strong>Agent 交易</strong>快速打底鋪路的開源專案 —
-      在 Claude Code／Codex 裝上 <a href="https://github.com/Sinotrade/Shioaji" target="_blank" rel="noopener">shioaji skill</a>，
-      coding agent 就能完全客製你自己的交易介面；打造自己的版本時，
-      還能把<strong>你自己的交易 agent</strong> 串進同一套 API。
-      閃電下單、圖表點價、停損停利 — 這裡的每一行程式碼，都是 agent 寫出來的能力證明。
+      交易工具的誕生方式，已經不一樣了。這個終端從第一行程式碼到簽章上架，
+      全程由 coding agent 完成 — 過去要一支團隊的工程，現在發生在對話之間。
+      Shioaji Pro 把這條路完整開源：裝上
+      <a href="https://github.com/Sinotrade/Shioaji" target="_blank" rel="noopener">shioaji skill</a>，
+      你的 Claude Code／Codex 就能客製出專屬於你的交易介面；
+      打造自己的版本時，再把<strong>你自己的交易 agent</strong> 串進同一套 API。
+      新世代不在路上 — 它已經能下單了。
     </p>
     <div class="badges">
       <span class="badge" style="color: var(--accent); border-color: var(--accent);">🤖 AI Agent 開發</span>
@@ -332,7 +346,7 @@
   <div class="wrap">
     <div class="sec-head">
       <h2>為 Agent 交易鋪路</h2>
-      <p>這個專案從第一個 commit 到自動發佈，全部由 AI agent 完成 — 它就是你的起點與能力上限參考</p>
+      <p>軟體的寫法變了，交易工具跟著改寫 — 這個專案從第一個 commit 到自動發佈全由 agent 完成，世代交替就從這裡開始</p>
     </div>
     <div class="grid">
       <div class="card">
@@ -366,18 +380,24 @@
         <p>fork 它、拆它、只抄你需要的那一段都歡迎 — 全部程式碼都是學習素材，搭配 <a href="https://sinotrade.github.io/" target="_blank" rel="noopener">Shioaji 官方文件</a> 一起服用。</p>
       </div>
     </div>
-    <div style="max-width: 620px; margin: 36px auto 0; text-align: center;">
-      <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 12px;">
-        用自己的 Claude Code／Codex 開始 — 裝上 shioaji skill 就緒：
+    <div style="max-width: 760px; margin: 40px auto 0; text-align: center;">
+      <p style="font-size: 0.92rem; color: var(--fg); margin-bottom: 14px; font-weight: 600;">
+        兩行指令，你的 agent 就踏進台股 — 然後開口描述你要的工具：
       </p>
-      <div style="font-family: var(--mono); font-size: 0.82rem; text-align: left; background: var(--bg); border: 1px solid var(--border-bright); border-radius: var(--radius); padding: 16px 20px; line-height: 2;">
-        <span style="color: var(--muted);"># Claude Code</span><br />
-        /plugin marketplace add Sinotrade/Shioaji<br />
-        /plugin install shioaji@sinotrade<br />
-        <span style="color: var(--muted);"># 然後直接說：「幫我用 shioaji 做一個 ___」</span>
+      <div class="install-grid">
+        <div style="font-family: var(--mono); font-size: 0.78rem; background: var(--bg); border: 1px solid var(--border-bright); border-radius: var(--radius); padding: 14px 18px; line-height: 2; overflow-x: auto;">
+          <span style="color: var(--muted);"># Claude Code</span><br />
+          claude plugin marketplace add Sinotrade/Shioaji<br />
+          claude plugin install shioaji
+        </div>
+        <div style="font-family: var(--mono); font-size: 0.78rem; background: var(--bg); border: 1px solid var(--border-bright); border-radius: var(--radius); padding: 14px 18px; line-height: 2; overflow-x: auto;">
+          <span style="color: var(--muted);"># Codex</span><br />
+          codex plugin marketplace add Sinotrade/Shioaji<br />
+          codex plugin add shioaji@sinotrade
+        </div>
       </div>
-      <p style="font-size: 0.78rem; color: var(--muted); margin-top: 10px;">
-        Codex／Cursor 使用者：repo 內附 <a href="https://github.com/Sinotrade/Shioaji" target="_blank" rel="noopener">.agents 與 .cursor-plugin</a> 對應設定
+      <p style="font-size: 0.8rem; color: var(--muted); margin-top: 12px; font-family: var(--mono);">
+        「幫我用 shioaji 做一個 ___」 — 剩下的交給 agent
       </p>
     </div>
   </div>
