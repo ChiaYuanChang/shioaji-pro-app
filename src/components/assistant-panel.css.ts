@@ -75,6 +75,7 @@ export const userMsg = style([
         background: vars.color.accentDim,
         color: vars.color.foreground,
         border: `1px solid ${vars.color.accent}`,
+        position: 'relative', // anchors the hover-revealed fork button
     },
 ]);
 
@@ -87,6 +88,101 @@ export const aiMsg = style([
         color: vars.color.foreground,
     },
 ]);
+
+// ---- chat sessions (history / resume / fork) ----
+
+export const sessionBar = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: vars.space.xs,
+    padding: `4px ${vars.space.sm}`,
+    borderBottom: `1px solid ${vars.color.border}`,
+    flexShrink: 0,
+});
+
+export const sessionTitleTxt = style({
+    flex: 1,
+    minWidth: 0,
+    fontSize: '0.68rem',
+    color: vars.color.mutedForeground,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+});
+
+export const sessionIconBtn = style({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '20px',
+    height: '20px',
+    flexShrink: 0,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    background: 'transparent',
+    color: vars.color.mutedForeground,
+    cursor: 'pointer',
+    ':hover': { color: vars.color.foreground, borderColor: vars.color.borderBright },
+    ':disabled': { opacity: 0.4, cursor: 'default' },
+});
+
+export const sessRow = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: vars.space.xs,
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: `4px ${vars.space.sm}`,
+});
+
+export const sessMain = style({
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1px',
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    textAlign: 'left',
+    padding: 0,
+});
+
+export const sessTitle = style({
+    fontSize: '0.72rem',
+    color: vars.color.foreground,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+});
+
+export const sessMeta = style({
+    fontSize: '0.62rem',
+    fontFamily: vars.font.mono,
+    color: vars.color.mutedForeground,
+});
+
+export const msgForkBtn = style({
+    position: 'absolute',
+    top: '2px',
+    insetInlineStart: '-24px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '18px',
+    height: '18px',
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    background: vars.color.panel,
+    color: vars.color.mutedForeground,
+    cursor: 'pointer',
+    opacity: 0,
+    transition: 'opacity 0.12s',
+    ':hover': { color: vars.color.foreground },
+});
+
+globalStyle(`${userMsg}:hover ${msgForkBtn}`, { opacity: 1 });
 
 // rendered-markdown body for assistant text (msgBase is pre-wrap for plain
 // user text; markdown supplies its own block spacing)

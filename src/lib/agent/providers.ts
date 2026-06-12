@@ -19,6 +19,14 @@ export interface ProviderSession {
     sendUser(text: string): void;
     pushToolResults(results: ToolResult[]): void;
     next(): Promise<LLMTurn>; // one model call
+    // replay a resumed/forked conversation as plain text turns (tool
+    // results are intentionally not replayed — agents re-query live data)
+    preload(history: ReplayTurn[]): void;
+}
+
+export interface ReplayTurn {
+    role: 'user' | 'assistant';
+    text: string;
 }
 
 // ---- Anthropic ----
@@ -39,6 +47,10 @@ export function anthropicSession(
 ): ProviderSession {
     const messages: { role: string; content: unknown }[] = [];
     return {
+        preload(history) {
+            for (const h of history)
+                messages.push({ role: h.role, content: h.text });
+        },
         sendUser(text) {
             messages.push({ role: 'user', content: text });
         },
@@ -125,6 +137,24 @@ export function codexSession(
     const input: unknown[] = [];
     let model = initialModel;
     return {
+        preload(history) {
+            for (const h of history) {
+                input.push(
+                    h.role === 'user'
+                        ? {
+                              role: 'user',
+                              content: [{ type: 'input_text', text: h.text }],
+                          }
+                        : {
+                              type: 'message',
+                              role: 'assistant',
+                              content: [
+                                  { type: 'output_text', text: h.text },
+                              ],
+                          },
+                );
+            }
+        },
         sendUser(text) {
             input.push({
                 role: 'user',
@@ -271,6 +301,10 @@ export function openaiSession(
         { role: 'system', content: system },
     ];
     return {
+        preload(history) {
+            for (const h of history)
+                messages.push({ role: h.role, content: h.text });
+        },
         sendUser(text) {
             messages.push({ role: 'user', content: text });
         },

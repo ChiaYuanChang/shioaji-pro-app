@@ -2,10 +2,32 @@
 // with the built-in shioaji skill, user-defined skills (/名稱 invokes),
 // scheduled & triggered tasks, run history, and provider settings.
 
-import { Check, Play, Trash2, Wrench, X } from 'lucide-react';
+import {
+    Check,
+    GitBranch,
+    History,
+    Play,
+    Plus,
+    Trash2,
+    Wrench,
+    X,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+    deleteSession,
+    forkSession,
+    getCurrentSessionId,
+    getSession,
+    historyForPreload,
+    listSessions,
+    newSessionId,
+    saveSession,
+    setCurrentSessionId,
+    titleFrom,
+    type ChatTurn,
+} from '../lib/agent/sessions';
 import {
     getAgentKey,
     getAgentModel,
@@ -62,18 +84,40 @@ const POLICIES: { key: AgentPolicy; label: string; hint: string }[] = [
     { key: 'auto', label: '自動下單', hint: '⚠ 直接送單（受風控限制）' },
 ];
 
-interface ChatTurn {
-    role: 'user' | 'assistant';
-    blocks: AgentBlock[];
+// proposals restored from a saved session are expired — prices are stale,
+// they must never be re-confirmable
+function expiredProposals(
+    turns: ChatTurn[],
+): Record<string, 'confirmed' | 'cancelled'> {
+    const out: Record<string, 'confirmed' | 'cancelled'> = {};
+    for (const t of turns)
+        for (const b of t.blocks)
+            if (b.type === 'proposal') out[b.id] = 'cancelled';
+    return out;
+}
+
+function relTime(ts: number): string {
+    const m = Math.round((Date.now() - ts) / 60000);
+    if (m < 1) return '剛剛';
+    if (m < 60) return `${m} 分鐘前`;
+    if (m < 60 * 24) return `${Math.round(m / 60)} 小時前`;
+    return `${Math.round(m / 1440)} 天前`;
 }
 
 function ChatTab() {
-    const [turns, setTurns] = useState<ChatTurn[]>([]);
+    const [sessionId, setSessionId] = useState(
+        () => getCurrentSessionId() || newSessionId(),
+    );
+    const [turns, setTurns] = useState<ChatTurn[]>(
+        () => getSession(getCurrentSessionId())?.turns ?? [],
+    );
     const [input, setInput] = useState('');
     const [busy, setBusy] = useState(false);
+    const [showHistory, setShowHistory] = useState(false);
+    const [, bumpList] = useState(0); // refresh history list after delete
     const [proposalDone, setProposalDone] = useState<
         Record<string, 'confirmed' | 'cancelled'>
-    >({});
+    >(() => expiredProposals(getSession(getCurrentSessionId())?.turns ?? []));
     const sessionRef = useRef<AgentSession | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const skills = useSkills();
@@ -81,6 +125,50 @@ function ChatTab() {
     useEffect(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     }, [turns, busy]);
+
+    // autosave the conversation on every turn
+    useEffect(() => {
+        if (turns.length === 0) return;
+        saveSession({
+            id: sessionId,
+            provider: getAgentProvider(),
+            model: getAgentModel(getAgentProvider()),
+            createdAt: Date.now(),
+            turns,
+        });
+        setCurrentSessionId(sessionId);
+    }, [turns, sessionId]);
+
+    // switch to a session (resume): restore turns, expire its proposals,
+    // and rebuild the provider context on next send
+    const openSession = (id: string) => {
+        if (busy) return;
+        const s = getSession(id);
+        setSessionId(id);
+        setTurns(s?.turns ?? []);
+        setProposalDone(expiredProposals(s?.turns ?? []));
+        setCurrentSessionId(id);
+        sessionRef.current = null;
+        setShowHistory(false);
+    };
+
+    const newChat = () => {
+        if (busy) return;
+        const id = newSessionId();
+        setSessionId(id);
+        setTurns([]);
+        setProposalDone({});
+        setCurrentSessionId('');
+        sessionRef.current = null;
+        setShowHistory(false);
+    };
+
+    // fork: duplicate (optionally up to a turn index) and switch to the copy
+    const doFork = (uptoTurn?: number) => {
+        if (busy || turns.length === 0) return;
+        const fork = forkSession(sessionId, uptoTurn);
+        if (fork) openSession(fork.id);
+    };
 
     const send = async () => {
         let text = input.trim();
@@ -93,6 +181,7 @@ function ChatTab() {
             }
         }
         setInput('');
+        const prior = turns;
         setTurns((p) => [
             ...p,
             { role: 'user', blocks: [{ type: 'text', text: input.trim() }] },
@@ -100,7 +189,11 @@ function ChatTab() {
         setBusy(true);
         try {
             if (!sessionRef.current) {
-                sessionRef.current = createAgentSession();
+                // resumed/forked conversations replay their transcript
+                sessionRef.current = createAgentSession(
+                    undefined,
+                    historyForPreload(prior),
+                );
             }
             await sessionRef.current.send(text, (blocks) =>
                 setTurns((p) => [...p, { role: 'assistant', blocks }]),
@@ -147,8 +240,91 @@ function ChatTab() {
         }
     };
 
+    const sessions = showHistory ? listSessions() : [];
+
     return (
         <>
+            <div className={styles.sessionBar}>
+                <button
+                    className={styles.sessionIconBtn}
+                    title='對話紀錄'
+                    onClick={() => setShowHistory((v) => !v)}
+                >
+                    <History size={12} />
+                </button>
+                <span className={styles.sessionTitleTxt}>
+                    {showHistory
+                        ? `對話紀錄（${listSessions().length}）`
+                        : turns.length > 0
+                          ? titleFrom(turns)
+                          : '新對話'}
+                </span>
+                <button
+                    className={styles.sessionIconBtn}
+                    title='分岔目前對話'
+                    disabled={busy || turns.length === 0}
+                    onClick={() => doFork()}
+                >
+                    <GitBranch size={12} />
+                </button>
+                <button
+                    className={styles.sessionIconBtn}
+                    title='新對話'
+                    disabled={busy}
+                    onClick={newChat}
+                >
+                    <Plus size={12} />
+                </button>
+            </div>
+            {showHistory ? (
+                <div className={styles.messages}>
+                    {sessions.length === 0 && (
+                        <div className={styles.emptyHint}>還沒有對話紀錄</div>
+                    )}
+                    {sessions.map((s) => (
+                        <div key={s.id} className={styles.sessRow}>
+                            <button
+                                className={styles.sessMain}
+                                onClick={() => openSession(s.id)}
+                                title='繼續這段對話'
+                            >
+                                <span className={styles.sessTitle}>
+                                    {s.id === sessionId ? '● ' : ''}
+                                    {s.title || titleFrom(s.turns)}
+                                </span>
+                                <span className={styles.sessMeta}>
+                                    {relTime(s.updatedAt)} · {s.turns.length} 則
+                                    · {s.provider}
+                                </span>
+                            </button>
+                            <button
+                                className={styles.sessionIconBtn}
+                                title='分岔成新對話'
+                                onClick={() => {
+                                    const f = forkSession(s.id);
+                                    if (f) openSession(f.id);
+                                }}
+                            >
+                                <GitBranch size={11} />
+                            </button>
+                            <button
+                                className={styles.sessionIconBtn}
+                                title='刪除'
+                                onClick={() => {
+                                    deleteSession(s.id);
+                                    if (s.id === sessionId) {
+                                        newChat();
+                                        setShowHistory(true);
+                                    }
+                                    bumpList((v) => v + 1);
+                                }}
+                            >
+                                <Trash2 size={11} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            ) : (
             <div ref={scrollRef} className={styles.messages}>
                 {turns.length === 0 && (
                     <div className={styles.emptyHint}>
@@ -162,6 +338,16 @@ function ChatTab() {
                         key={i}
                         className={t.role === 'user' ? styles.userMsg : styles.aiMsg}
                     >
+                        {t.role === 'user' && (
+                            <button
+                                className={styles.msgForkBtn}
+                                title='從這裡分岔（不含此訊息之後的內容）'
+                                disabled={busy}
+                                onClick={() => doFork(i)}
+                            >
+                                <GitBranch size={10} />
+                            </button>
+                        )}
                         {t.blocks.map((b, j) => {
                             if (b.type === 'text') {
                                 if (t.role === 'user') {
@@ -234,6 +420,7 @@ function ChatTab() {
                 ))}
                 {busy && <div className={styles.aiMsg}>思考中…</div>}
             </div>
+            )}
             <div className={styles.inputRow}>
                 <input
                     className={styles.chatInput}

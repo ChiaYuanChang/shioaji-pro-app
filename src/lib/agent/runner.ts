@@ -22,6 +22,7 @@ export interface AgentSession {
 
 export function createAgentSession(
     overridePolicy?: AgentPolicy,
+    history?: { role: 'user' | 'assistant'; text: string }[],
 ): AgentSession {
     const cfg = getAgentConfig();
     const policy = overridePolicy ?? cfg.policy;
@@ -40,6 +41,7 @@ export function createAgentSession(
             : cfg.provider === 'openai'
               ? openaiSession(cfg.apiKey, cfg.model, system, tools)
               : codexSession(cfg.model, system, tools);
+    if (history && history.length > 0) session.preload(history);
 
     return {
         policy,
