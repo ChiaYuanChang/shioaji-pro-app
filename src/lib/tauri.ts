@@ -320,6 +320,25 @@ export async function openFlashTiles(
     });
 }
 
+// ---- app version (for support: shown in the server panel & debug) ----
+
+let cachedVersion: string | null = null;
+
+export async function appVersion(): Promise<string> {
+    if (cachedVersion) return cachedVersion;
+    if (isTauri) {
+        try {
+            const { getVersion } = await import('@tauri-apps/api/app');
+            cachedVersion = await getVersion();
+            return cachedVersion;
+        } catch {
+            // fall through
+        }
+    }
+    cachedVersion = 'dev';
+    return cachedVersion;
+}
+
 // ---- auto-update ----
 
 let updateInFlight = false;

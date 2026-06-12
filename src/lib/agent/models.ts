@@ -14,12 +14,12 @@ async function llmFetch(url: string, init: RequestInit): Promise<Response> {
     return fetch(url, init);
 }
 
-const CODEX_FALLBACK = [
-    'gpt-5.4-codex',
-    'gpt-5.4',
-    'gpt-5.4-mini',
-    'gpt-5.4-nano',
-];
+// the ChatGPT backend rejects requests without a recent client_version
+// and silently returns an empty list for old ones — keep in sync with a
+// current Codex CLI release
+const CODEX_CLIENT_VERSION = '0.137.0';
+
+const CODEX_FALLBACK = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'];
 
 const cache = new Map<string, string[]>();
 
@@ -62,7 +62,7 @@ export async function listModels(provider: AgentProvider): Promise<string[]> {
             };
             if (cred.accountId) headers['ChatGPT-Account-ID'] = cred.accountId;
             const res = await llmFetch(
-                'https://chatgpt.com/backend-api/codex/models',
+                `https://chatgpt.com/backend-api/codex/models?client_version=${CODEX_CLIENT_VERSION}`,
                 { headers },
             );
             if (res.ok) {

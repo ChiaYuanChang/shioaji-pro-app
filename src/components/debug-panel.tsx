@@ -12,6 +12,7 @@ import {
     onAnyTick,
     onOrderEvent,
 } from '../lib/stream';
+import { appVersion } from '../lib/tauri';
 import type { OrderEventData } from '../lib/types/order';
 import * as dockStyles from './bottom-dock.css';
 import * as styles from './debug-panel.css';
@@ -26,6 +27,11 @@ export function DebugPanel() {
     const [events, setEvents] = useState<
         { ts: number; data: OrderEventData }[]
     >([]);
+    const [ver, setVer] = useState('');
+
+    useEffect(() => {
+        appVersion().then(setVer);
+    }, []);
 
     useEffect(() => {
         const offTick = onAnyTick(() => {
@@ -62,6 +68,7 @@ export function DebugPanel() {
     const rate = (tickTimes.current.length / 5).toFixed(1);
 
     const rows: { label: string; value: string; warn?: boolean }[] = [
+        { label: 'App 版本', value: ver ? `v${ver}` : '—' },
         {
             label: 'SSE 行情流',
             value: STATUS_LABEL[stream],

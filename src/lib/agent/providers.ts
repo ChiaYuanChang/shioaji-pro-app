@@ -118,11 +118,12 @@ interface ResponseItem {
 }
 
 export function codexSession(
-    model: string,
+    initialModel: string,
     system: string,
     tools: ToolDef[],
 ): ProviderSession {
     const input: unknown[] = [];
+    let model = initialModel;
     return {
         sendUser(text) {
             input.push({
@@ -148,13 +149,12 @@ export function codexSession(
             if (cred.accountId) {
                 headers['ChatGPT-Account-ID'] = cred.accountId;
             }
-            const res = await llmFetch(
-                'https://chatgpt.com/backend-api/codex/responses',
-                {
+            const doFetch = (m: string) =>
+                llmFetch('https://chatgpt.com/backend-api/codex/responses', {
                     method: 'POST',
                     headers,
                     body: JSON.stringify({
-                        model,
+                        model: m,
                         instructions: system,
                         input,
                         tools: tools.map((t) => ({
@@ -166,12 +166,30 @@ export function codexSession(
                         store: false,
                         stream: true,
                     }),
-                },
-            );
+                });
+            let res = await doFetch(model);
             if (!res.ok) {
-                throw new Error(
-                    `Codex ${res.status}: ${(await res.text()).slice(0, 200)}`,
-                );
+                const errText = (await res.text()).slice(0, 300);
+                // the backend retires model slugs without notice — fall back
+                // to the first live model once and remember the switch
+                if (
+                    res.status === 400 &&
+                    errText.includes('model is not supported')
+                ) {
+                    const { listModels } = await import('./models');
+                    const { setAgentModel } = await import('./config');
+                    const alive = (await listModels('codex')).filter(
+                        (m) => m !== model,
+                    );
+                    if (alive.length > 0 && alive[0]) {
+                        model = alive[0];
+                        setAgentModel('codex', model);
+                        res = await doFetch(model);
+                    }
+                }
+                if (!res.ok) {
+                    throw new Error(`Codex ${res.status}: ${errText}`);
+                }
             }
             // the endpoint only streams — collect the SSE and parse the
             // completed output items

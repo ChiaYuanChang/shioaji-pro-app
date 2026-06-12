@@ -1,12 +1,13 @@
 // src/components/server-manager.tsx — desktop-only shioaji server控制台:
 // status, start/stop/restart, API-key settings, simulation/production mode.
 
-import { Play, RefreshCw, RotateCcw, Square, X } from 'lucide-react';
+import { Clipboard, Play, RefreshCw, RotateCcw, Square, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { usePoll } from '../hooks/use-poll';
 import { useStreamStatus } from '../hooks/use-stream';
 import { fetchHealth } from '../lib/shioaji';
 import {
+    appVersion,
     isTauri,
     loadDesktopSettings,
     pickCaFile,
@@ -21,6 +22,37 @@ import {
 import { notify } from '../lib/trade';
 import type { Health } from '../lib/types/health';
 import * as styles from './hud-header.css';
+
+// translate known server-start failures into something a user can act on
+// (the raw log buries the ERROR line below INFO noise — see the
+// "msg receiver error: Closed" support case)
+function diagnoseOutput(output: string): string | null {
+    if (/not exist/i.test(output))
+        return 'API Key 不存在或已失效 — 請至永豐「API 管理頁」確認或重建金鑰後重新填入';
+    if (/invalid (secret_key|api_key)|base58/i.test(output))
+        return '金鑰格式錯誤 — 請確認 API Key／Secret Key 完整貼上（沒有多餘空白或漏字）';
+    if (/ca.*(password|passwd)|pfx/i.test(output))
+        return '憑證載入失敗 — 請確認 Sinopac.pfx 與憑證密碼';
+    if (/Authentication failed|login validation error|LOGINING/i.test(output))
+        return '登入失敗 — 請檢查金鑰是否正確、API 約定書是否已完成簽署、同帳號連線是否已達上限（5 條）';
+    return null;
+}
+
+function errorLines(output: string): string {
+    return [
+        ...new Set(
+            output
+                .split('\n')
+                .filter((l) => /\bERROR\b|^Error:/i.test(l))
+                .map((l) =>
+                    l.replace(/^.*\bERROR\b\S*\s*/, '').replace(/^Error:\s*/, ''),
+                )
+                .filter(Boolean),
+        ),
+    ]
+        .slice(0, 2)
+        .join('\n');
+}
 
 export function ServerManager({
     open,
@@ -39,6 +71,11 @@ export function ServerManager({
     });
     const [busy, setBusy] = useState(false);
     const [lastOutput, setLastOutput] = useState('');
+    const [ver, setVer] = useState('');
+
+    useEffect(() => {
+        appVersion().then(setVer);
+    }, []);
 
     const stream = useStreamStatus();
     const { data: status, refresh } = usePoll<ServerStatus | null>(
@@ -100,7 +137,8 @@ export function ServerManager({
         setBusy(true);
         try {
             const res = await serverStart(settings);
-            setLastOutput(res.output.slice(0, 400));
+            // keep the tail — start failures put the ERROR line last
+            setLastOutput(res.output.slice(-600));
             notify({
                 kind: res.ok ? 'ok' : 'err',
                 title: res.ok
@@ -110,7 +148,9 @@ export function ServerManager({
                     : '伺服器啟動失敗',
                 body: res.ok
                     ? `port ${res.port} · 模式：${settings.production ? '⚠ 正式環境' : '模擬環境'}`
-                    : res.output.slice(0, 120),
+                    : diagnoseOutput(res.output) ||
+                      errorLines(res.output) ||
+                      res.output.slice(-120),
             });
             if (res.ok) {
                 // reload once healthy (or immediately when the port moved)
@@ -130,7 +170,7 @@ export function ServerManager({
         setBusy(true);
         try {
             const res = await serverStop();
-            setLastOutput(res.output.slice(0, 400));
+            setLastOutput(res.output.slice(-600));
             notify({
                 kind: res.ok ? 'ok' : 'err',
                 title: res.ok ? '🔴 伺服器已停止' : '停止失敗',
@@ -200,8 +240,26 @@ export function ServerManager({
                         onClick={() => onToggle(false)}
                     />
                     <div className={styles.popover} style={{ width: '19rem' }}>
-                        <span className={styles.settingLabel}>
+                        <span
+                            className={styles.settingLabel}
+                            style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'baseline',
+                            }}
+                        >
                             Shioaji Server 狀態
+                            {ver && (
+                                <span
+                                    style={{
+                                        fontFamily: 'var(--font-mono, monospace)',
+                                        opacity: 0.75,
+                                        fontWeight: 400,
+                                    }}
+                                >
+                                    App v{ver}
+                                </span>
+                            )}
                         </span>
                         <span className={styles.emptyHint}>
                             {phase === 'starting' &&
@@ -416,11 +474,70 @@ export function ServerManager({
                             <RefreshCw size={13} />
                             檢查 App 更新
                         </button>
+                        {lastOutput && diagnoseOutput(lastOutput) && (
+                            <span
+                                className={styles.emptyHint}
+                                style={{
+                                    color: 'var(--danger, #f23645)',
+                                    fontWeight: 600,
+                                }}
+                            >
+                                ⚠ {diagnoseOutput(lastOutput)}
+                            </span>
+                        )}
+                        {lastOutput && errorLines(lastOutput) && (
+                            <span
+                                className={styles.emptyHint}
+                                style={{ color: 'var(--danger, #f23645)' }}
+                            >
+                                {errorLines(lastOutput)}
+                            </span>
+                        )}
                         {lastOutput && (
                             <span className={styles.emptyHint}>
                                 {lastOutput}
                             </span>
                         )}
+                        <button
+                            className={styles.updateBtn}
+                            onClick={async () => {
+                                const lines = [
+                                    `Shioaji Pro v${ver || '?'} · ${navigator.platform}`,
+                                    `server: ${
+                                        status?.running
+                                            ? `running pid=${status.pid} port=${status.port} ${
+                                                  status.simulation
+                                                      ? 'sim'
+                                                      : 'prod'
+                                              } healthy=${status.healthy}`
+                                            : 'not running'
+                                    }`,
+                                    `stream: ${stream} · mode setting: ${
+                                        settings.production ? 'prod' : 'sim'
+                                    } · ca: ${settings.caPath ? 'set' : 'none'}`,
+                                    lastOutput ? `--- log ---\n${lastOutput}` : '',
+                                ].filter(Boolean);
+                                try {
+                                    await navigator.clipboard.writeText(
+                                        lines.join('\n'),
+                                    );
+                                    notify({
+                                        kind: 'ok',
+                                        title: '已複製診斷資訊',
+                                        body: '回報問題時直接貼上即可',
+                                    });
+                                } catch {
+                                    notify({
+                                        kind: 'err',
+                                        title: '複製失敗',
+                                        body: '請手動截圖面板內容',
+                                    });
+                                }
+                            }}
+                        >
+                            <Clipboard size={13} />
+                            複製診斷資訊
+                        </button>
                     </div>
                 </>
             )}

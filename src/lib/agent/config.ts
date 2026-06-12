@@ -14,7 +14,13 @@ const K = {
 const DEFAULT_MODEL: Record<AgentProvider, string> = {
     anthropic: 'claude-sonnet-4-6',
     openai: 'gpt-5.1',
-    codex: 'gpt-5.4-codex',
+    codex: 'gpt-5.5',
+};
+
+// models that no longer exist upstream — silently upgrade saved settings
+const RETIRED_MODELS: Record<string, string> = {
+    'gpt-5.4-codex': 'gpt-5.5',
+    'gpt-5.4-nano': 'gpt-5.4-mini',
 };
 
 function get(key: string): string {
@@ -65,6 +71,11 @@ export function setAgentKey(provider: AgentProvider, key: string) {
 
 export function getAgentModel(provider: AgentProvider): string {
     const v = get(`sj-agent-model-${provider}`);
+    const retired = RETIRED_MODELS[v];
+    if (retired) {
+        set(`sj-agent-model-${provider}`, retired);
+        return retired;
+    }
     return v || DEFAULT_MODEL[provider];
 }
 
