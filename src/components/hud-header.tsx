@@ -506,13 +506,14 @@ function ProfilesMenu({
 }
 
 // ⚡全開 layout picker: thumbnails first, windows open per the chosen
-// arrangement (full-screen grids / right column / bottom row)
+// arrangement. Flash ladders are tall and narrow, so the practical
+// layouts are full-height strips side by side.
 const FLASH_LAYOUTS: (FlashTileLayout & { key: string; label: string })[] = [
-    { key: 'g9', label: '九宮格', cols: 3, rows: 3, region: 'full' },
-    { key: 'g6', label: '六宮格', cols: 3, rows: 2, region: 'full' },
-    { key: 'g4', label: '田字', cols: 2, rows: 2, region: 'full' },
+    { key: 's8', label: '8 長條', cols: 8, rows: 1, region: 'full' },
+    { key: 's6', label: '6 長條', cols: 6, rows: 1, region: 'full' },
+    { key: 's4', label: '4 長條', cols: 4, rows: 1, region: 'full' },
+    { key: 's3', label: '3 長條', cols: 3, rows: 1, region: 'full' },
     { key: 'right4', label: '右側直欄', cols: 1, rows: 4, region: 'right' },
-    { key: 'bottom4', label: '下方橫列', cols: 4, rows: 1, region: 'bottom' },
 ];
 
 function FlashThumb({ layout }: { layout: FlashTileLayout }) {

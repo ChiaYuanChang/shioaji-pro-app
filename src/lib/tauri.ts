@@ -312,7 +312,9 @@ export async function openFlashTiles(
             y,
             width: w,
             height: h,
-            minWidth: 300,
+            // 8 strips on a 1920px screen are 240px each — keep the
+            // minimum below the strip width so tiles never overlap
+            minWidth: 210,
             minHeight: 280,
         });
     });
