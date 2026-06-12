@@ -1,0 +1,35 @@
+# Open-source build guarantee: the public repo's web app must always build
+# WITHOUT the private desktop modules — anyone cloning this repo gets a
+# working web terminal (closed features show their FeatureGate lock screens).
+name: web-build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # no private modules checkout on purpose — this is the OSS path
+      - name: Build web app (stub modules)
+        run: pnpm build
+
+      - name: Assert stub was used
+        run: |
+          test ! -d modules && echo "OK: built without private modules"

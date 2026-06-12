@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@statsig/js-client':
+        specifier: ^3.33.2
+        version: 3.33.2
       '@tauri-apps/api':
         specifier: ^2.11.0
         version: 2.11.0
@@ -449,6 +452,12 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
+
+  '@statsig/client-core@3.33.2':
+    resolution: {integrity: sha512-TKZ546NfK2oShe1sHhgn+TaCoAWZ/bs0soK+gAjB/y5UAqWVhCcORAd/8eRUyor8Lz2VfL3V4Ze/zr1CCM2/5g==}
+
+  '@statsig/js-client@3.33.2':
+    resolution: {integrity: sha512-FgAnaN0d8X/OEZS/HEGI2D3CdbZzsbw3BHlSGvaqUcnwu45aXejFFUCCw96/NTH4lEvSMj1S1RBsrnQ2pVErgQ==}
 
   '@tauri-apps/api@2.11.0':
     resolution: {integrity: sha512-7CinYODhky9lmO23xHnUFv0Xt43fbtWMyxZcLcRBlFkcgXKuEirBvHpmtJ89YMhyeGcq20Wuc47Fa4XjyniywA==}
@@ -1591,6 +1600,12 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.0.1': {}
+
+  '@statsig/client-core@3.33.2': {}
+
+  '@statsig/js-client@3.33.2':
+    dependencies:
+      '@statsig/client-core': 3.33.2
 
   '@tauri-apps/api@2.11.0': {}
 

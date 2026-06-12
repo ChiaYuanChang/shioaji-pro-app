@@ -18,6 +18,10 @@ export type Tier = 'free' | 'vip';
 // src/modules-stub for open-source builds)
 export interface ClosedModules {
     resolveTier?: (personId: string | null) => Promise<Tier>;
+    // per-feature gate from the entitlement service (e.g. a feature-flag
+    // provider). Tri-state: true/false = service decision; undefined =
+    // service has no opinion → fall back to the tier rule below.
+    checkFeature?: (key: string) => boolean | undefined;
     agent?: {
         Panel: React.ComponentType;
         ensureScheduler: () => void;
@@ -46,7 +50,17 @@ export const FEATURES: FeatureDef[] = [
 
 // ---- current tier store ----
 
-let tier: Tier = 'free';
+// start from the last known tier so returning users don't see a lock flash
+// while the entitlement service resolves
+const TIER_CACHE_KEY = 'sj-tier-cache';
+let tier: Tier = (() => {
+    try {
+        const v = localStorage.getItem(TIER_CACHE_KEY);
+        return v === 'vip' || v === 'free' ? v : 'free';
+    } catch {
+        return 'free';
+    }
+})();
 let resolved = false;
 const listeners = new Set<() => void>();
 
@@ -61,7 +75,14 @@ async function resolve() {
     }
     try {
         const next = await closedModules.resolveTier?.(personId);
-        if (next) tier = next;
+        if (next) {
+            tier = next;
+            try {
+                localStorage.setItem(TIER_CACHE_KEY, next);
+            } catch {
+                // session only
+            }
+        }
     } catch {
         // keep default
     }
@@ -92,6 +113,14 @@ export function featureState(key: string, currentTier: Tier): FeatureState {
     if (!def) return { enabled: true }; // unknown key — never block
     if (def.closed && !(key in closedModules)) {
         return { enabled: false, reason: 'desktop-only' };
+    }
+    // the entitlement service (closed) gets first say per feature
+    try {
+        const gate = closedModules.checkFeature?.(key);
+        if (gate === true) return { enabled: true };
+        if (gate === false) return { enabled: false, reason: 'vip-required' };
+    } catch {
+        // service unavailable — fall back to tier rule
     }
     if (def.tier === 'vip' && currentTier !== 'vip') {
         return { enabled: false, reason: 'vip-required' };
