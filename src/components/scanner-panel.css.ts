@@ -40,7 +40,7 @@ export const sw = styleVariants({
 // volume stacked on the right — no dead space between code and name
 export const row = style({
     display: 'grid',
-    gridTemplateColumns: '1.2rem minmax(0, 1fr) auto',
+    gridTemplateColumns: '1.2rem minmax(0, 1fr) auto auto',
     alignItems: 'center',
     columnGap: vars.space.xs,
     padding: `3px ${vars.space.sm}`,
@@ -78,6 +78,23 @@ export const scSub = style({
     textAlign: 'right',
     color: vars.color.mutedForeground,
     fontSize: '0.62rem',
+});
+
+// clickable 類別 chip that jumps the heatmap to this stock's sector
+export const sectorTag = style({
+    fontSize: '0.6rem',
+    fontFamily: vars.font.body,
+    color: vars.color.mutedForeground,
+    background: vars.color.muted,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: '1px 5px',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    ':hover': {
+        color: vars.color.accent,
+        borderColor: vars.color.accent,
+    },
 });
 
 export const errorBox = style({

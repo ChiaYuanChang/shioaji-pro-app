@@ -1,7 +1,14 @@
 // src/components/scanner-panel.tsx — market movers leaderboard
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { focusSector } from '../lib/sector-sync';
 import { fetchScanner } from '../lib/shioaji';
+import {
+    categoryOf,
+    loadStockIndex,
+    sectorLabel,
+    type StockMeta,
+} from '../lib/stock-index';
 import type { ScannerItem, ScannerType } from '../lib/types/market';
 import { fmtInt, fmtPct, fmtPrice } from '../lib/utils/format';
 import * as panel from './panel.css';
@@ -18,14 +25,17 @@ const MODES: { key: string; type: ScannerType; label: string; ascending: boolean
 ];
 
 // 複選 (issue #2): union three deep ranks, then intersect by thresholds —
-// the top names are often untradeable, crossing conditions finds the rest
+// the top names are often untradeable, crossing conditions finds the rest.
+// `short` flips the 漲幅 condition to 跌幅 so you can screen short candidates
+// (跌幅 + 量 + 額), which the long-only version couldn't surface.
 async function fetchMulti(
     minPct: number,
     minVolK: number,
     minAmtB: number,
+    short: boolean,
 ): Promise<ScannerItem[]> {
     const [pct, vol, amt] = await Promise.allSettled([
-        fetchScanner('ChangePercentRank', 100, true),
+        fetchScanner('ChangePercentRank', 100, !short),
         fetchScanner('VolumeRank', 100, true),
         fetchScanner('AmountRank', 100, true),
     ]);
@@ -39,8 +49,9 @@ async function fetchMulti(
     const out = [...byCode.values()].filter((it) => {
         const ref = it.close - it.change_price;
         const pctV = it.change_price && ref > 0 ? (it.change_price / ref) * 100 : 0;
+        const pctOk = short ? pctV <= -minPct : pctV >= minPct;
         return (
-            pctV >= minPct &&
+            pctOk &&
             it.total_volume >= minVolK * 1000 &&
             it.total_amount >= minAmtB * 1e8
         );
@@ -50,7 +61,7 @@ async function fetchMulti(
         const refB = b.close - b.change_price;
         const pa = refA > 0 ? a.change_price / refA : 0;
         const pb = refB > 0 ? b.change_price / refB : 0;
-        return pb - pa;
+        return short ? pa - pb : pb - pa; // 放空：跌最多在前
     });
     return out.slice(0, 30);
 }
@@ -86,14 +97,31 @@ export function ScannerPanel({
     const [minAmtB, setMinAmtB] = useState(
         () => Number(localStorage.getItem('sj-scan-minamt')) || 1,
     );
+    const [multiShort, setMultiShort] = useState(
+        () => localStorage.getItem('sj-scan-multishort') === '1',
+    );
+    const [index, setIndex] = useState<StockMeta[] | null>(null);
     const mode = MODES.find((m) => m.key === modeKey) ?? MODES[0]!;
+
+    // stock index for the per-row 類別 label + 跳同類 (issue #2)
+    useEffect(() => {
+        loadStockIndex().then(setIndex).catch(() => undefined);
+    }, []);
+    const catByCode = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const it of items) {
+            const c = index ? categoryOf(index, it.code) : null;
+            if (c) m.set(it.code, c);
+        }
+        return m;
+    }, [items, index]);
 
     useEffect(() => {
         let cancelled = false;
         setError(false);
         const load = () =>
             (mode.key === 'multi'
-                ? fetchMulti(minPct, minVolK, minAmtB)
+                ? fetchMulti(minPct, minVolK, minAmtB, multiShort)
                 : fetchScanner(mode.type, 20, mode.ascending)
             )
                 .then((d) => {
@@ -108,7 +136,7 @@ export function ScannerPanel({
             cancelled = true;
             clearInterval(t);
         };
-    }, [mode, reloadSeq, minPct, minVolK, minAmtB]);
+    }, [mode, reloadSeq, minPct, minVolK, minAmtB, multiShort]);
 
     return (
         <>
@@ -128,9 +156,38 @@ export function ScannerPanel({
             </div>
             {mode.key === 'multi' && (
                 <div className={styles.filterRow}>
+                    <div className={styles.switcher} style={{ padding: 0 }}>
+                        {(
+                            [
+                                ['做多', false],
+                                ['放空', true],
+                            ] as [string, boolean][]
+                        ).map(([label, sh]) => (
+                            <button
+                                key={label}
+                                className={
+                                    styles.sw[multiShort === sh ? 'on' : 'off']
+                                }
+                                onClick={() => {
+                                    setMultiShort(sh);
+                                    localStorage.setItem(
+                                        'sj-scan-multishort',
+                                        sh ? '1' : '0',
+                                    );
+                                }}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
                     {(
                         [
-                            ['漲幅≥%', minPct, setMinPct, 'sj-scan-minpct'],
+                            [
+                                multiShort ? '跌幅≥%' : '漲幅≥%',
+                                minPct,
+                                setMinPct,
+                                'sj-scan-minpct',
+                            ],
                             ['量≥千張', minVolK, setMinVolK, 'sj-scan-minvol'],
                             ['額≥億', minAmtB, setMinAmtB, 'sj-scan-minamt'],
                         ] as [string, number, (v: number) => void, string][]
@@ -206,6 +263,20 @@ export function ScannerPanel({
                                     {it.name}
                                 </span>
                             </span>
+                            {catByCode.get(it.code) ? (
+                                <button
+                                    className={styles.sectorTag}
+                                    title='跳到此類股熱力圖'
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        focusSector(catByCode.get(it.code)!);
+                                    }}
+                                >
+                                    {sectorLabel(catByCode.get(it.code)!)}
+                                </button>
+                            ) : (
+                                <span />
+                            )}
                             <span className={styles.valueBlock}>
                                 <span
                                     className={`${styles.scValue} ${panel.dirText[dir]}`}

@@ -73,3 +73,47 @@ export function categoriesOf(
         .map(([category, count]) => ({ category, count }))
         .sort((a, b) => b.count - a.count);
 }
+
+// TWSE category code → readable label (shared by heatmap + leaderboard)
+export const SECTOR_LABELS: Record<string, string> = {
+    '24': '半導體',
+    '25': '電腦週邊',
+    '26': '光電',
+    '27': '通信網路',
+    '28': '電子零組件',
+    '29': '電子通路',
+    '30': '資訊服務',
+    '31': '其他電子',
+    '01': '水泥',
+    '02': '食品',
+    '03': '塑膠',
+    '04': '紡織',
+    '05': '電機',
+    '06': '電器電纜',
+    '08': '玻璃陶瓷',
+    '09': '造紙',
+    '10': '鋼鐵',
+    '11': '橡膠',
+    '12': '汽車',
+    '14': '建材營造',
+    '15': '航運',
+    '16': '觀光',
+    '17': '金融保險',
+    '18': '貿易百貨',
+    '20': '其他',
+    '21': '化學',
+    '22': '生技醫療',
+    '23': '油電燃氣',
+};
+
+export function sectorLabel(category: string): string {
+    return SECTOR_LABELS[category] ?? category;
+}
+
+// the category code for a single stock code (for showing/jumping by sector)
+export function categoryOf(
+    index: StockMeta[],
+    code: string,
+): string | null {
+    return index.find((s) => s.code === code)?.category ?? null;
+}

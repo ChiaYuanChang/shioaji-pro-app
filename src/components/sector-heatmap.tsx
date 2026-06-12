@@ -6,9 +6,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePoll } from '../hooks/use-poll';
 import { fetchSnapshots } from '../lib/shioaji';
+import { useFocusedSector } from '../lib/sector-sync';
 import {
     categoriesOf,
     loadStockIndex,
+    sectorLabel,
     type StockMeta,
 } from '../lib/stock-index';
 import { getChartColors, useThemeSettings } from '../lib/theme-store';
@@ -20,41 +22,7 @@ import * as styles from './sector-heatmap.css';
 const MAX_MEMBERS = 80;
 const CAT_KEY = 'sj-pro-heatmap-cat';
 
-// category code → readable label (common TWSE category codes)
-const CAT_LABELS: Record<string, string> = {
-    '24': '半導體',
-    '25': '電腦週邊',
-    '26': '光電',
-    '27': '通信網路',
-    '28': '電子零組件',
-    '29': '電子通路',
-    '30': '資訊服務',
-    '31': '其他電子',
-    '01': '水泥',
-    '02': '食品',
-    '03': '塑膠',
-    '04': '紡織',
-    '05': '電機',
-    '06': '電器電纜',
-    '08': '玻璃陶瓷',
-    '09': '造紙',
-    '10': '鋼鐵',
-    '11': '橡膠',
-    '12': '汽車',
-    '14': '建材營造',
-    '15': '航運',
-    '16': '觀光',
-    '17': '金融保險',
-    '18': '貿易百貨',
-    '20': '其他',
-    '21': '化學',
-    '22': '生技醫療',
-    '23': '油電燃氣',
-};
-
-function catLabel(cat: string): string {
-    return CAT_LABELS[cat] ?? cat;
-}
+const catLabel = sectorLabel;
 
 export function SectorHeatmap({
     onPick,
@@ -71,6 +39,15 @@ export function SectorHeatmap({
     useEffect(() => {
         loadStockIndex().then(setIndex).catch(() => undefined);
     }, []);
+
+    // jump here when a leaderboard row's 跳同類 fires (issue #2)
+    const focused = useFocusedSector();
+    useEffect(() => {
+        if (focused?.category) {
+            setCat(focused.category);
+            localStorage.setItem(CAT_KEY, focused.category);
+        }
+    }, [focused?.seq]);
 
     const categories = useMemo(
         () => (index ? categoriesOf(index).filter((c) => c.count >= 5) : []),
