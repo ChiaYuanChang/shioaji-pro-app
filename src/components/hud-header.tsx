@@ -25,6 +25,11 @@ import {
 } from '../lib/privacy';
 import { setSoundEnabled, soundEnabled } from '../lib/sounds';
 import {
+    setToastScale,
+    useToastScale,
+    type ToastScale,
+} from '../lib/toast-prefs';
+import {
     setThemeSettings,
     useThemeSettings,
     type Convention,
@@ -97,6 +102,7 @@ function ThemeSettings() {
     const [sound, setSound] = useState(soundEnabled());
     const priv = usePrivacyMode();
     const privMoney = usePrivacyMoney();
+    const toastScale = useToastScale();
     return (
         <Menu label='主題'>
             {() => (
@@ -169,6 +175,30 @@ function ThemeSettings() {
                                 onClick={() =>
                                     setThemeSettings({ fontScale: scale })
                                 }
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    <span className={styles.settingLabel}>
+                        通知大小 Toast Size
+                    </span>
+                    <div className={styles.settingGroup}>
+                        {(
+                            [
+                                [0.9, '小'],
+                                [1, '標準'],
+                                [1.25, '大'],
+                            ] as [ToastScale, string][]
+                        ).map(([scale, label]) => (
+                            <button
+                                key={scale}
+                                className={
+                                    styles.opt[
+                                        toastScale === scale ? 'on' : 'off'
+                                    ]
+                                }
+                                onClick={() => setToastScale(scale)}
                             >
                                 {label}
                             </button>

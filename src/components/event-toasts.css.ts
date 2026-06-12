@@ -1,6 +1,7 @@
-// src/components/event-toasts.css.ts
+// src/components/event-toasts.css.ts — prominent kind-coded toast cards.
+// Sizes are em-based so the 通知大小 setting scales everything at once.
 
-import { keyframes, style } from '@vanilla-extract/css';
+import { keyframes, style, styleVariants } from '@vanilla-extract/css';
 import { vars } from '../theme.css';
 
 const slideIn = keyframes({
@@ -16,27 +17,89 @@ export const stack = style({
     flexDirection: 'column',
     gap: vars.space.sm,
     zIndex: 1000,
-    width: '20rem',
     pointerEvents: 'none',
 });
 
-export const toast = style({
-    fontFamily: vars.font.mono,
-    fontSize: '0.72rem',
-    padding: `${vars.space.sm} ${vars.space.md}`,
+const toastBase = style({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '0.6em',
+    fontFamily: vars.font.body,
+    fontSize: '0.78em',
+    padding: '0.7em 0.9em',
     background: vars.color.panelRaised,
     border: `1px solid ${vars.color.borderBright}`,
-    borderLeft: `3px solid ${vars.color.accent}`,
-    borderRadius: vars.radius.sm,
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
+    borderRadius: vars.radius.md,
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
     animation: `${slideIn} 0.22s ease-out`,
 });
 
-export const toastTitle = style({
+export const toast = styleVariants({
+    deal: [toastBase, { borderLeft: `4px solid ${vars.color.amber}` }],
+    ok: [toastBase, { borderLeft: `4px solid ${vars.color.down}` }],
+    err: [
+        toastBase,
+        {
+            borderLeft: `4px solid ${vars.color.danger}`,
+            background: vars.color.panelRaised,
+            boxShadow: `0 10px 30px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(242, 54, 69, 0.25)`,
+        },
+    ],
+    info: [toastBase, { borderLeft: `4px solid ${vars.color.accent}` }],
+});
+
+const iconBase = style({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '1.9em',
+    height: '1.9em',
+    borderRadius: '50%',
+    flexShrink: 0,
+    marginTop: '0.05em',
+});
+
+export const icon = styleVariants({
+    deal: [
+        iconBase,
+        { color: vars.color.amber, background: 'rgba(224, 164, 60, 0.14)' },
+    ],
+    ok: [iconBase, { color: vars.color.down, background: vars.color.downDim }],
+    err: [
+        iconBase,
+        { color: vars.color.danger, background: 'rgba(242, 54, 69, 0.14)' },
+    ],
+    info: [
+        iconBase,
+        { color: vars.color.accent, background: vars.color.accentDim },
+    ],
+});
+
+export const content = style({
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.15em',
+});
+
+export const title = style({
     fontFamily: vars.font.display,
-    fontSize: '0.66rem',
-    fontWeight: 600,
-    letterSpacing: '0.04em',
-    color: vars.color.accent,
-    marginBottom: '2px',
+    fontSize: '0.92em',
+    fontWeight: 700,
+    color: vars.color.foreground,
+});
+
+const lineBase = style({
+    fontFamily: vars.font.mono,
+    fontSize: '0.88em',
+    fontVariantNumeric: 'tabular-nums',
+    color: vars.color.mutedForeground,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+});
+
+export const line = styleVariants({
+    plain: [lineBase],
+    up: [lineBase, { color: vars.color.up, fontWeight: 600 }],
+    down: [lineBase, { color: vars.color.down, fontWeight: 600 }],
 });
