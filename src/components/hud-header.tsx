@@ -28,6 +28,7 @@ import {
     setThemeSettings,
     useThemeSettings,
     type Convention,
+    type FontScale,
     type ThemeMode,
 } from '../lib/theme-store';
 import {
@@ -145,6 +146,33 @@ function ThemeSettings() {
                         <span className={panel.dirText.down}>
                             ▼ -1.25 下跌
                         </span>
+                    </div>
+                    <span className={styles.settingLabel}>字級 Font Size</span>
+                    <div className={styles.settingGroup}>
+                        {(
+                            [
+                                [0.85, '小'],
+                                [1, '標準'],
+                                [1.15, '大'],
+                                [1.3, '特大'],
+                            ] as [FontScale, string][]
+                        ).map(([scale, label]) => (
+                            <button
+                                key={scale}
+                                className={
+                                    styles.opt[
+                                        settings.fontScale === scale
+                                            ? 'on'
+                                            : 'off'
+                                    ]
+                                }
+                                onClick={() =>
+                                    setThemeSettings({ fontScale: scale })
+                                }
+                            >
+                                {label}
+                            </button>
+                        ))}
                     </div>
                     <span className={styles.settingLabel}>音效 Sound</span>
                     <button

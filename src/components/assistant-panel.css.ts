@@ -198,3 +198,182 @@ export const disclaimer = style({
     textAlign: 'center',
     flexShrink: 0,
 });
+
+// ---- agent panel tabs / lists / forms ----
+
+export const tabBar = style({
+    display: 'flex',
+    gap: vars.space.xs,
+    padding: `4px ${vars.space.sm} 0`,
+    borderBottom: `1px solid ${vars.color.border}`,
+    flexShrink: 0,
+});
+
+const tabBase = style({
+    fontFamily: vars.font.display,
+    fontSize: '0.68rem',
+    fontWeight: 500,
+    padding: '5px 10px',
+    cursor: 'pointer',
+    background: 'transparent',
+    border: 'none',
+    borderBottom: '2px solid transparent',
+    color: vars.color.mutedForeground,
+    ':hover': { color: vars.color.foreground },
+});
+
+export const tabOn = style([
+    tabBase,
+    {
+        color: vars.color.foreground,
+        fontWeight: 600,
+        borderBottomColor: vars.color.accent,
+    },
+]);
+
+export const tabOff = tabBase;
+
+export const listCol = style({
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    padding: vars.space.sm,
+});
+
+export const formCol = style({
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: vars.space.sm,
+    padding: vars.space.sm,
+});
+
+export const formRow = style({
+    display: 'flex',
+    gap: vars.space.xs,
+});
+
+export const formArea = style({
+    minHeight: '7rem',
+    resize: 'vertical',
+    fontFamily: vars.font.mono,
+    fontSize: '0.7rem',
+    lineHeight: 1.6,
+    color: vars.color.foreground,
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: '6px 10px',
+    outline: 'none',
+    ':focus': { borderColor: vars.color.accent },
+});
+
+export const formSelect = style({
+    flex: 1,
+    minWidth: 0,
+    fontFamily: vars.font.body,
+    fontSize: '0.7rem',
+    color: vars.color.foreground,
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: '4px 8px',
+    outline: 'none',
+});
+
+export const itemRow = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: vars.space.xs,
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: `4px ${vars.space.sm}`,
+});
+
+export const itemMain = style({
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    textAlign: 'left',
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    color: vars.color.foreground,
+});
+
+export const itemTitle = style({
+    fontFamily: vars.font.body,
+    fontSize: '0.72rem',
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flexWrap: 'wrap',
+});
+
+export const itemSub = style({
+    fontSize: '0.64rem',
+    color: vars.color.mutedForeground,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+});
+
+export const itemBadge = style({
+    fontFamily: vars.font.mono,
+    fontSize: '0.58rem',
+    fontWeight: 500,
+    color: vars.color.accent,
+    background: vars.color.accentDim,
+    borderRadius: '999px',
+    padding: '1px 7px',
+});
+
+export const itemIconBtn = style({
+    width: '22px',
+    height: '22px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    background: 'transparent',
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    color: vars.color.mutedForeground,
+    flexShrink: 0,
+    ':hover': { color: vars.color.foreground },
+});
+
+export const toggleOn = style([
+    itemIconBtn,
+    {
+        color: vars.color.down,
+        borderColor: vars.color.down,
+        background: vars.color.downDim,
+    },
+]);
+
+export const toggleOff = itemIconBtn;
+
+export const warnLine = style({
+    fontSize: '0.62rem',
+    color: vars.color.amber,
+});
+
+export const toolNote = style({
+    display: 'inline-block',
+    fontFamily: vars.font.mono,
+    fontSize: '0.6rem',
+    color: vars.color.mutedForeground,
+    background: vars.color.muted,
+    borderRadius: '999px',
+    padding: '1px 8px',
+    marginRight: '4px',
+});

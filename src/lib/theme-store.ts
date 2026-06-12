@@ -8,15 +8,18 @@ import { themeClasses } from '../theme.css';
 
 export type ThemeMode = 'dark' | 'midnight' | 'light';
 export type Convention = 'tw' | 'intl';
+export type FontScale = 0.85 | 1 | 1.15 | 1.3;
 
 export interface ThemeSettings {
     mode: ThemeMode;
     convention: Convention;
+    fontScale: FontScale;
 }
 
 const STORAGE_KEY = 'sj-pro-theme';
 const MODES: ThemeMode[] = ['dark', 'midnight', 'light'];
 const CONVENTIONS: Convention[] = ['tw', 'intl'];
+const SCALES: FontScale[] = [0.85, 1, 1.15, 1.3];
 
 function load(): ThemeSettings {
     try {
@@ -27,13 +30,19 @@ function load(): ThemeSettings {
                 MODES.includes(s.mode as ThemeMode) &&
                 CONVENTIONS.includes(s.convention as Convention)
             ) {
-                return s as ThemeSettings;
+                return {
+                    mode: s.mode as ThemeMode,
+                    convention: s.convention as Convention,
+                    fontScale: SCALES.includes(s.fontScale as FontScale)
+                        ? (s.fontScale as FontScale)
+                        : 1,
+                };
             }
         }
     } catch {
         // corrupted settings — use defaults
     }
-    return { mode: 'dark', convention: 'tw' };
+    return { mode: 'dark', convention: 'tw', fontScale: 1 };
 }
 
 let settings: ThemeSettings = load();
@@ -49,6 +58,8 @@ function applyClass() {
     if (cls) root.classList.add(cls);
     // light/dark <select>/scrollbar rendering follows this hint too
     root.style.colorScheme = settings.mode === 'light' ? 'light' : 'dark';
+    // every style is rem-based, so scaling the root font-size scales the UI
+    root.style.fontSize = `${16 * settings.fontScale}px`;
 }
 
 // sync the native window chrome (macOS appearance / Windows titlebar)

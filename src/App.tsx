@@ -24,7 +24,7 @@ import { ComboTicket } from './components/combo-ticket';
 import { DebugPanel } from './components/debug-panel';
 import { GridTicket } from './components/grid-ticket';
 import { NoticeCenter } from './components/notice-center';
-import { AssistantPanel } from './components/assistant-panel';
+import { AgentPanel } from './components/agent-panel';
 import { OptPayoff } from './components/opt-payoff';
 import { SectorHeatmap } from './components/sector-heatmap';
 import { PnlPanel } from './components/pnl-panel';
@@ -213,7 +213,7 @@ function BlockBody({
         case 'optpnl':
             return <OptPayoff positions={dockProps.positions} />;
         case 'assistant':
-            return <AssistantPanel />;
+            return <AgentPanel />;
         case 'replay':
             return contract ? (
                 <ReplayPanel contract={contract} />

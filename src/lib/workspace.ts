@@ -172,7 +172,7 @@ export const BLOCK_META: Record<
         defaultSize: { w: 8, h: 13, minW: 6, minH: 9 },
     },
     assistant: {
-        label: 'AI 助理',
+        label: 'AI Agent',
         pinnable: false,
         singleton: true,
         defaultSize: { w: 7, h: 14, minW: 5, minH: 9 },

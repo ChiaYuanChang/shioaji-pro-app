@@ -10,6 +10,7 @@ import {
     fetchInfo,
     subscribeTradeEvents,
 } from './shioaji';
+import { ensureAgentScheduler } from './agent/tasks';
 import { isTauri, setApiPort } from './runtime';
 import { onOrderEvent } from './stream';
 import { loadDesktopSettings, serverStart, serverStatus } from './tauri';
@@ -20,6 +21,8 @@ let booted = false;
 export function bootstrap() {
     if (booted) return;
     booted = true;
+    // agent scheduled/triggered tasks run for the app's lifetime
+    ensureAgentScheduler();
     // every order event lands in the 通知中心 log (toasts stay separate)
     onOrderEvent((ev) => {
         const deal = ev.code && ev.price !== undefined;

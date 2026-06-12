@@ -1,0 +1,360 @@
+// src/lib/agent/tools.ts — the agent's hands: everything the terminal can
+// do, exposed as provider-neutral tools. Trading tools are filtered by
+// policy; under 'auto' place_order executes through the same risk-gated
+// path as every human order.
+
+import { ensureContract } from '../contracts-cache';
+import {
+    cancelOrder,
+    fetchAccountBalance,
+    fetchKbars,
+    fetchMargin,
+    fetchPositions,
+    fetchScanner,
+    fetchSnapshots,
+    fetchTrades,
+} from '../shioaji';
+import { getQuote } from '../stream';
+import { notify, placeQuickOrder } from '../trade';
+import { ACTIVE_ORDER_STATUSES } from '../types/order';
+import { dateStrOffset } from '../utils/kbars';
+import { findSkill } from './skills';
+import type {
+    AgentPolicy,
+    OrderProposal,
+    ToolDef,
+} from './types';
+
+export const TOOL_DEFS: ToolDef[] = [
+    {
+        name: 'get_quote',
+        description: '取得商品即時報價（價格、漲跌、買賣價、量、漲跌停）',
+        schema: {
+            type: 'object',
+            properties: {
+                code: { type: 'string', description: '代碼，如 2330、TXFR1' },
+            },
+            required: ['code'],
+        },
+    },
+    {
+        name: 'get_positions',
+        description: '取得所有持倉（股票+期貨）含損益',
+        schema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'get_working_orders',
+        description: '取得在途（未成交）委託單，含委託單 id',
+        schema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'get_account',
+        description: '取得帳務：交割帳戶餘額、期貨權益數/保證金/風險指標',
+        schema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'get_kbar_summary',
+        description: '商品近 N 日 K 線摘要（期間高低、收盤、漲跌幅）',
+        schema: {
+            type: 'object',
+            properties: {
+                code: { type: 'string' },
+                days: { type: 'number', description: '預設 20，最大 120' },
+            },
+            required: ['code'],
+        },
+    },
+    {
+        name: 'get_scanner',
+        description: '市場排行：漲幅/量/額前 N 名',
+        schema: {
+            type: 'object',
+            properties: {
+                rank: {
+                    type: 'string',
+                    enum: ['change_pct', 'volume', 'amount'],
+                },
+                count: { type: 'number', description: '預設 10' },
+            },
+            required: ['rank'],
+        },
+    },
+    {
+        name: 'use_skill',
+        description: '載入一個具名技能的完整工作流程步驟，然後照著執行',
+        schema: {
+            type: 'object',
+            properties: { name: { type: 'string', description: '技能名稱' } },
+            required: ['name'],
+        },
+    },
+    {
+        name: 'notify_user',
+        description: '發送 App 內通知給使用者（重要發現、警示）',
+        schema: {
+            type: 'object',
+            properties: {
+                title: { type: 'string' },
+                body: { type: 'string' },
+            },
+            required: ['title', 'body'],
+        },
+    },
+    {
+        name: 'place_order',
+        description:
+            '下單。confirm 權限下產生提案卡待使用者確認；auto 權限下直接送出（受風控限制）',
+        trading: true,
+        schema: {
+            type: 'object',
+            properties: {
+                code: { type: 'string' },
+                action: { type: 'string', enum: ['Buy', 'Sell'] },
+                price: { type: 'number', description: '限價；省略=市價' },
+                quantity: { type: 'number' },
+                reason: { type: 'string', description: '一句話理由' },
+            },
+            required: ['code', 'action', 'quantity', 'reason'],
+        },
+    },
+    {
+        name: 'cancel_order',
+        description: '刪除一筆在途委託（用 get_working_orders 取得 id）',
+        trading: true,
+        schema: {
+            type: 'object',
+            properties: { order_id: { type: 'string' } },
+            required: ['order_id'],
+        },
+    },
+];
+
+export function toolsForPolicy(policy: AgentPolicy): ToolDef[] {
+    return policy === 'readonly'
+        ? TOOL_DEFS.filter((t) => !t.trading)
+        : TOOL_DEFS;
+}
+
+export interface ToolExecution {
+    result: unknown;
+    proposal?: OrderProposal; // confirm policy: surfaced as a card/notice
+}
+
+export async function executeTool(
+    name: string,
+    input: Record<string, unknown>,
+    policy: AgentPolicy,
+): Promise<ToolExecution> {
+    switch (name) {
+        case 'get_quote': {
+            const c = await ensureContract(
+                String(input.code ?? '').toUpperCase(),
+            );
+            const q = getQuote(c.code);
+            const snap = q?.tick
+                ? null
+                : (await fetchSnapshots([c]).catch(() => []))[0];
+            const close = q?.tick ? Number(q.tick.close) : snap?.close;
+            const ref = c.reference;
+            return {
+                result: {
+                    code: c.code,
+                    name: c.name,
+                    close,
+                    change_pct:
+                        close !== undefined && ref
+                            ? `${(((close - ref) / ref) * 100).toFixed(2)}%`
+                            : null,
+                    bid: q?.bidask ? Number(q.bidask.bid_price[0]) : null,
+                    ask: q?.bidask ? Number(q.bidask.ask_price[0]) : null,
+                    total_volume:
+                        q?.tick?.total_volume ?? snap?.total_volume ?? null,
+                    limit_up: c.limit_up,
+                    limit_down: c.limit_down,
+                },
+            };
+        }
+        case 'get_positions': {
+            const [s, f] = await Promise.allSettled([
+                fetchPositions('S'),
+                fetchPositions('F'),
+            ]);
+            return {
+                result: [
+                    ...(s.status === 'fulfilled' ? s.value : []),
+                    ...(f.status === 'fulfilled' ? f.value : []),
+                ].map((p) => ({
+                    code: p.code,
+                    direction: p.direction,
+                    quantity: p.quantity,
+                    unit: 'yd_quantity' in p ? '股' : '口',
+                    avg_price: p.price,
+                    last_price: p.last_price,
+                    pnl: Math.round(p.pnl),
+                })),
+            };
+        }
+        case 'get_working_orders': {
+            const [s, f] = await Promise.allSettled([
+                fetchTrades('S'),
+                fetchTrades('F'),
+            ]);
+            return {
+                result: [
+                    ...(s.status === 'fulfilled' ? s.value : []),
+                    ...(f.status === 'fulfilled' ? f.value : []),
+                ]
+                    .filter((t) => ACTIVE_ORDER_STATUSES.has(t.status.status))
+                    .map((t) => ({
+                        order_id: t.order.id,
+                        code: t.contract.code,
+                        action: t.order.action,
+                        price: t.status.modified_price || t.order.price,
+                        quantity: t.order.quantity,
+                        filled: t.status.deal_quantity,
+                        status: t.status.status,
+                    })),
+            };
+        }
+        case 'get_account': {
+            const [bal, mar] = await Promise.allSettled([
+                fetchAccountBalance(),
+                fetchMargin(),
+            ]);
+            return {
+                result: {
+                    balance:
+                        bal.status === 'fulfilled'
+                            ? bal.value.acc_balance
+                            : null,
+                    margin:
+                        mar.status === 'fulfilled'
+                            ? {
+                                  equity: mar.value.equity,
+                                  available: mar.value.available_margin,
+                                  risk_indicator: mar.value.risk_indicator,
+                                  settle_pnl:
+                                      mar.value.future_settle_profitloss,
+                              }
+                            : null,
+                },
+            };
+        }
+        case 'get_kbar_summary': {
+            const c = await ensureContract(
+                String(input.code ?? '').toUpperCase(),
+            );
+            const days = Math.min(120, Number(input.days) || 20);
+            const k = await fetchKbars(
+                c,
+                dateStrOffset(days),
+                dateStrOffset(0),
+            );
+            const closes = k.Close.filter((v): v is number => !!v);
+            if (closes.length === 0) return { result: { error: '無資料' } };
+            const highs = k.High.filter((v): v is number => !!v);
+            const lows = k.Low.filter((v): v is number => !!v);
+            const lastClose = closes[closes.length - 1]!;
+            return {
+                result: {
+                    code: c.code,
+                    days,
+                    period_high: Math.max(...highs),
+                    period_low: Math.min(...lows),
+                    last_close: lastClose,
+                    period_change_pct: `${(((lastClose - closes[0]!) / closes[0]!) * 100).toFixed(2)}%`,
+                },
+            };
+        }
+        case 'get_scanner': {
+            const map = {
+                change_pct: 'ChangePercentRank',
+                volume: 'VolumeRank',
+                amount: 'AmountRank',
+            } as const;
+            const rank =
+                map[input.rank as keyof typeof map] ?? 'ChangePercentRank';
+            const items = await fetchScanner(
+                rank,
+                Math.min(30, Number(input.count) || 10),
+                true,
+            );
+            return {
+                result: items.map((it) => ({
+                    code: it.code,
+                    name: it.name,
+                    close: it.close,
+                    change: it.change_price,
+                    volume: it.total_volume,
+                    amount: it.total_amount,
+                })),
+            };
+        }
+        case 'use_skill': {
+            const skill = findSkill(String(input.name ?? ''));
+            if (!skill) {
+                return { result: { error: `找不到技能 ${input.name}` } };
+            }
+            return {
+                result: {
+                    name: skill.name,
+                    instructions: skill.instructions,
+                },
+            };
+        }
+        case 'notify_user': {
+            notify({
+                kind: 'info',
+                title: `🤖 ${String(input.title ?? '')}`,
+                body: String(input.body ?? ''),
+            });
+            return { result: { sent: true } };
+        }
+        case 'place_order': {
+            const proposal: OrderProposal = {
+                code: String(input.code ?? '').toUpperCase(),
+                action: input.action === 'Sell' ? 'Sell' : 'Buy',
+                price:
+                    input.price === undefined || input.price === null
+                        ? null
+                        : Number(input.price),
+                quantity: Math.max(1, Number(input.quantity) || 1),
+                reason: String(input.reason ?? ''),
+            };
+            if (policy !== 'auto') {
+                return {
+                    result: {
+                        status: 'awaiting_user_confirmation',
+                        note: '提案已顯示，等待使用者手動確認',
+                    },
+                    proposal,
+                };
+            }
+            // auto: execute through the same risk-gated path as humans
+            const contract = await ensureContract(proposal.code);
+            const trade = await placeQuickOrder(
+                contract,
+                proposal.action,
+                proposal.price,
+                proposal.quantity,
+            );
+            notify({
+                kind: 'ok',
+                title: '🤖 Agent 已下單',
+                body: `${proposal.code} ${proposal.action === 'Buy' ? '買' : '賣'} ${proposal.quantity} @ ${proposal.price ?? '市價'}（${trade.status.status}）`,
+            });
+            return {
+                result: {
+                    status: trade.status.status,
+                    order_id: trade.order.id,
+                },
+            };
+        }
+        case 'cancel_order': {
+            await cancelOrder(String(input.order_id ?? ''));
+            return { result: { cancelled: true } };
+        }
+        default:
+            return { result: { error: `unknown tool ${name}` } };
+    }
+}
