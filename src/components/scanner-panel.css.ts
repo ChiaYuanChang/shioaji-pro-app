@@ -36,9 +36,11 @@ export const sw = styleVariants({
     ],
 });
 
+// two-line rows: code+name stacked tight on the left, price/pct and
+// volume stacked on the right — no dead space between code and name
 export const row = style({
     display: 'grid',
-    gridTemplateColumns: '1.4rem 3.4rem 1fr auto auto',
+    gridTemplateColumns: '1.2rem minmax(0, 1fr) auto',
     alignItems: 'center',
     columnGap: vars.space.xs,
     padding: `3px ${vars.space.sm}`,
@@ -48,6 +50,24 @@ export const row = style({
     cursor: 'pointer',
     borderBottom: `1px solid rgba(34, 43, 55, 0.45)`,
     ':hover': { background: vars.color.muted },
+});
+
+export const idBlock = style({
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+});
+
+export const scCode = style({
+    fontWeight: 600,
+    color: vars.color.foreground,
+});
+
+export const valueBlock = style({
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    whiteSpace: 'nowrap',
 });
 
 export const rowPicked = style({

@@ -119,13 +119,21 @@ export function ScannerPanel({
                             <span className={styles.rank}>
                                 {String(i + 1).padStart(2, '0')}
                             </span>
-                            <span>{it.code}</span>
-                            <span className={styles.scName}>{it.name}</span>
-                            <span className={styles.scSub}>{sub}</span>
-                            <span
-                                className={`${styles.scValue} ${panel.dirText[dir]}`}
-                            >
-                                {fmtPrice(it.close)} {fmtPct(pct)}
+                            <span className={styles.idBlock}>
+                                <span className={styles.scCode}>
+                                    {it.code}
+                                </span>
+                                <span className={styles.scName}>
+                                    {it.name}
+                                </span>
+                            </span>
+                            <span className={styles.valueBlock}>
+                                <span
+                                    className={`${styles.scValue} ${panel.dirText[dir]}`}
+                                >
+                                    {fmtPrice(it.close)} {fmtPct(pct)}
+                                </span>
+                                <span className={styles.scSub}>{sub}</span>
                             </span>
                         </div>
                     );
