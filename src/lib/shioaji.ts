@@ -175,11 +175,35 @@ export function unsubscribeQuote(
 
 // ---- orders ----
 
+// R1/R2 continuous-month aliases are data-only — orders must target the
+// resolved real contract (target_code, e.g. TXFR1 → TXFF6), otherwise the
+// exchange rejects them (issue #1: TXFR1 下單 Failed)
+function orderableKey(c: ContractBase) {
+    const key = contractKey(c);
+    if (c.target_code && /R[12]$/.test(c.code)) {
+        return { ...key, code: c.target_code };
+    }
+    return key;
+}
+
+// place_order can return HTTP 200 with an immediately-rejected trade:
+// status "Failed" and the real reason only in status.msg（CA 問題、未簽署、
+// 價格不合法…）。Turn that into a thrown error so every order path's
+// existing error handling surfaces it（issue #1: 只顯示 Failed 沒有原因）
+function ensureAccepted<
+    T extends { status: { status: string; msg?: string } },
+>(t: T): T {
+    if (t.status?.status === 'Failed') {
+        throw new Error(t.status.msg || '委託被拒絕（Failed）');
+    }
+    return t;
+}
+
 export function placeStockOrder(contract: ContractBase, order: StockOrderReq) {
     return apiPost<Trade>('/api/v1/order/place_order', {
         contract: contractKey(contract),
         stock_order: { ...order, account: accountFor('S') },
-    });
+    }).then(ensureAccepted);
 }
 
 export function placeFuturesOrder(
@@ -187,9 +211,9 @@ export function placeFuturesOrder(
     order: FuturesOrderReq,
 ) {
     return apiPost<Trade>('/api/v1/order/place_order', {
-        contract: contractKey(contract),
+        contract: orderableKey(contract),
         futures_order: { ...order, account: accountFor('F') },
-    });
+    }).then(ensureAccepted);
 }
 
 export function cancelOrder(tradeId: string) {
@@ -270,6 +294,14 @@ export interface ComboLeg {
     target_code?: string | null;
 }
 
+export type ComboType =
+    | 'PriceSpread'
+    | 'TimeSpread'
+    | 'Straddle'
+    | 'Strangle'
+    | 'ConversionReversal'
+    | 'WeeklyTimeSpread';
+
 export interface ComboOrderReq {
     action: 'Buy' | 'Sell';
     price: number;
@@ -277,6 +309,9 @@ export interface ComboOrderReq {
     price_type: 'LMT' | 'MKT' | 'MKP';
     order_type: 'ROD' | 'IOC' | 'FOK';
     octype?: 'Auto' | 'New' | 'Cover' | 'DayTrade';
+    // explicit strategy type — the server can't always auto-derive it from
+    // the legs（issue #1: 期貨轉倉 400 combo_type could not be auto-derived）
+    combo_type?: ComboType | null;
 }
 
 export interface ComboTrade {
@@ -293,10 +328,16 @@ export interface ComboTrade {
 
 export function placeComboOrder(legs: ComboLeg[], order: ComboOrderReq) {
     const acc = accountFor('F');
+    // R1/R2 alias legs must order the resolved real contract too
+    const resolved = legs.map((l) =>
+        l.target_code && /R[12]$/.test(l.code)
+            ? { ...l, code: l.target_code, target_code: null }
+            : l,
+    );
     return apiPost<ComboTrade>('/api/v1/order/place_comboorder', {
-        combo_contract: { legs },
+        combo_contract: { legs: resolved },
         order: { ...order, account: acc },
-    });
+    }).then(ensureAccepted);
 }
 
 export function cancelComboOrder(tradeId: string) {

@@ -18,6 +18,10 @@ import { EventToasts } from './components/event-toasts';
 import { FlashOrder } from './components/flash-order';
 import { HudHeader } from './components/hud-header';
 import { OptionChain } from './components/option-chain';
+import {
+    broadcastSelectCode,
+    onBroadcastSelectCode,
+} from './lib/option-pick';
 import { OrderTicket } from './components/order-ticket';
 import { ChipsCard } from './components/chips-card';
 import { ComboTicket } from './components/combo-ticket';
@@ -329,7 +333,10 @@ function PopoutView({
 
     let body: React.ReactNode = <BlockPlaceholder />;
     if (type === 'pnl') body = <PnlPanel />;
-    else if (type === 'optchain') body = <OptionChain />;
+    else if (type === 'optchain')
+        // popout T 字 click → switch the MAIN window's selected symbol so
+        // 下單面板等連動面板跟著動（issue #1: T 字要同時連動下單面板）
+        body = <OptionChain onPick={broadcastSelectCode} />;
     else if (type === 'combo') body = <ComboTicket />;
     else if (contract) {
         switch (type) {
@@ -532,6 +539,14 @@ export default function App() {
         );
         return () => off?.();
     }, []);
+    // popout windows (T 字等) ask the main window to switch symbols
+    useEffect(
+        () =>
+            onBroadcastSelectCode((code) => {
+                void selectByCodeRef.current(code);
+            }),
+        [],
+    );
 
     const selectedSnapshot = useMemo(
         () => items.find((i) => i.contract.code === selected?.code)?.snapshot,

@@ -1,5 +1,6 @@
 // src/components/bottom-dock.tsx — positions / orders / account tabs
 
+import { Lock, Unlock } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePoll } from '../hooks/use-poll';
 import { useTradingLive } from '../hooks/use-stream';
@@ -69,8 +70,33 @@ function PositionsTable({
     onSelectCode: (code: string) => void;
 }) {
     const [busyCode, setBusyCode] = useState<string | null>(null);
+    // 平/反 are one-click market orders on the whole position — keep them
+    // locked by default like 閃電下單 (issue #1: 存股族一秒反向很可怕)
+    const [actArmed, setActArmed] = useState(false);
     const privMoney = usePrivacyMoney();
     const live = useTradingLive();
+    // 股名 joined from the contract cache (issue #1: 只看 code 不友善)
+    const [names, setNames] = useState<Record<string, string>>({});
+    const codesKey = positions.map((p) => p.code).join(',');
+    useEffect(() => {
+        let alive = true;
+        void Promise.allSettled(
+            positions.map((p) => ensureContract(p.code)),
+        ).then((rs) => {
+            if (!alive) return;
+            const next: Record<string, string> = {};
+            for (const r of rs) {
+                if (r.status === 'fulfilled' && r.value.name) {
+                    next[r.value.code] = r.value.name;
+                }
+            }
+            setNames(next);
+        });
+        return () => {
+            alive = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [codesKey]);
     const act = async (p: Position, mode: 'close' | 'reverse') => {
         if (busyCode) return;
         setBusyCode(p.code);
@@ -111,6 +137,7 @@ function PositionsTable({
             <thead>
                 <tr>
                     <th className={styles.th}>代碼</th>
+                    <th className={styles.th}>名稱</th>
                     <th className={styles.th}>方向</th>
                     <th className={styles.th}>數量</th>
                     <th className={styles.th}>成本</th>
@@ -120,7 +147,27 @@ function PositionsTable({
                     <th className={styles.th} style={{ width: '18%' }}>
                         損益分布
                     </th>
-                    <th className={styles.th} />
+                    <th className={styles.th}>
+                        <button
+                            className={styles.cancelBtn}
+                            title={
+                                actArmed
+                                    ? '鎖定平/反按鍵（防誤觸）'
+                                    : '平/反為整倉市價單，預設鎖定 — 點此解鎖'
+                            }
+                            style={
+                                actArmed
+                                    ? {
+                                          color: vars.color.danger,
+                                          borderColor: vars.color.danger,
+                                      }
+                                    : undefined
+                            }
+                            onClick={() => setActArmed((v) => !v)}
+                        >
+                            {actArmed ? <Unlock size={10} /> : <Lock size={10} />}
+                        </button>
+                    </th>
                 </tr>
             </thead>
             <tbody>
@@ -141,6 +188,9 @@ function PositionsTable({
                             title='點擊連動圖表與下單面板'
                         >
                             <td className={styles.td}>{p.code}</td>
+                            <td className={styles.td}>
+                                {names[p.code] ?? ''}
+                            </td>
                             <td
                                 className={`${styles.td} ${panel.dirText[p.direction === 'Buy' ? 'up' : 'down']}`}
                             >
@@ -189,11 +239,15 @@ function PositionsTable({
                             <td className={styles.td}>
                                 <button
                                     className={styles.cancelBtn}
-                                    disabled={busyCode === p.code || !live}
+                                    disabled={
+                                        busyCode === p.code || !live || !actArmed
+                                    }
                                     title={
-                                        live
-                                            ? '市價沖銷此倉位'
-                                            : '行情未連線，暫停下單'
+                                        !live
+                                            ? '行情未連線，暫停下單'
+                                            : !actArmed
+                                              ? '已鎖定 — 點表頭鎖頭解鎖平/反'
+                                              : '市價沖銷此倉位'
                                     }
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -204,11 +258,15 @@ function PositionsTable({
                                 </button>{' '}
                                 <button
                                     className={styles.cancelBtn}
-                                    disabled={busyCode === p.code || !live}
+                                    disabled={
+                                        busyCode === p.code || !live || !actArmed
+                                    }
                                     title={
-                                        live
-                                            ? '市價反向兩倍（翻倉）'
-                                            : '行情未連線，暫停下單'
+                                        !live
+                                            ? '行情未連線，暫停下單'
+                                            : !actArmed
+                                              ? '已鎖定 — 點表頭鎖頭解鎖平/反'
+                                              : '市價反向兩倍（翻倉）'
                                     }
                                     onClick={(e) => {
                                         e.stopPropagation();

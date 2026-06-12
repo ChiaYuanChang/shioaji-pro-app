@@ -17,6 +17,7 @@ import {
     subscribeQuote,
     type ComboLeg,
     type ComboTrade,
+    type ComboType,
 } from '../lib/shioaji';
 import { assertTradingLive, notify } from '../lib/trade';
 import type { ContractInfo } from '../lib/types/contract';
@@ -40,6 +41,51 @@ const EMPTY_LEG: LegState = {
     error: false,
     locked: false,
 };
+
+// derive the TAIFEX strategy type from the legs — the server can't always
+// auto-derive it（issue #1: 期貨轉倉 400 combo_type could not be
+// auto-derived），and an explicit type is unambiguous
+function deriveComboType(legs: LegState[]): ComboType | null {
+    const [l0, l1] = legs;
+    const a = l0?.contract;
+    const b = l1?.contract;
+    if (!a || !b) return null;
+    const sameAction = l0.action === l1.action;
+    const root = (c: ContractInfo) =>
+        c.category || c.code.replace(/(R[12]|[A-Z]\d)$/, '');
+    if (a.security_type === 'FUT' && b.security_type === 'FUT') {
+        // 同商品跨月、一買一賣 ＝ 跨月價差（轉倉）
+        if (
+            root(a) === root(b) &&
+            a.delivery_month !== b.delivery_month &&
+            !sameAction
+        ) {
+            return 'TimeSpread';
+        }
+        return null;
+    }
+    if (a.security_type === 'OPT' && b.security_type === 'OPT') {
+        if (a.delivery_month !== b.delivery_month) {
+            // 同履約價同 Call/Put 跨月 ＝ 時間價差
+            return a.strike_price === b.strike_price &&
+                a.option_right === b.option_right &&
+                !sameAction
+                ? 'TimeSpread'
+                : null;
+        }
+        if (a.option_right !== b.option_right) {
+            if (a.strike_price === b.strike_price) {
+                return sameAction ? 'Straddle' : 'ConversionReversal';
+            }
+            return sameAction ? 'Strangle' : null;
+        }
+        // 同 Call/Put 不同履約價、一買一賣 ＝ 垂直價差
+        if (a.strike_price !== b.strike_price && !sameAction) {
+            return 'PriceSpread';
+        }
+    }
+    return null;
+}
 
 function LegQuote({
     contract,
@@ -237,6 +283,7 @@ export function ComboTicket() {
                     price_type: 'LMT',
                     order_type: 'IOC',
                     octype: 'Auto',
+                    combo_type: deriveComboType(legs),
                 });
                 notify({
                     kind: 'ok',
@@ -289,6 +336,7 @@ export function ComboTicket() {
                 price_type: 'LMT',
                 order_type: orderType,
                 octype: 'Auto',
+                combo_type: deriveComboType(legs),
             });
             notify({
                 kind: 'ok',

@@ -226,6 +226,16 @@ export function ServerManager({
             });
             return;
         }
+        // 選了憑證卻沒填密碼 → 伺服器照樣啟動但 CA 啟用失敗，下單全部
+        // 400（issue #1 的真因之一）— 啟動前就擋下
+        if (settings.production && settings.caPath && !settings.caPasswd) {
+            notify({
+                kind: 'err',
+                title: '憑證密碼空白',
+                body: '已選擇憑證檔但未填密碼 — CA 會啟用失敗導致下單 400，請先填入憑證密碼',
+            });
+            return;
+        }
         setBusy(true);
         try {
             const res = await serverStart(settings);
