@@ -17,6 +17,7 @@ import {
     useState,
 } from 'react';
 import { useQuote } from '../hooks/use-stream';
+import { maskMoney, usePrivacyMoney } from '../lib/privacy';
 import { cancelOrder } from '../lib/shioaji';
 import { getAliasFor, onOrderEvent } from '../lib/stream';
 import { notify, placeQuickOrder } from '../lib/trade';
@@ -178,6 +179,7 @@ export function FlashOrder({
     onOrdersChanged?: () => void;
 }) {
     const quote = useQuote(contract.code);
+    const privMoney = usePrivacyMoney();
     const [qty, setQty] = useState(1);
     const [armed, setArmed] = useState(false);
     const [anchor, setAnchor] = useState<number | null>(null);
@@ -665,7 +667,7 @@ export function FlashOrder({
                             pos.pnl >= 0 ? styles.posLong : styles.posShort
                         }
                     >
-                        {fmtSigned(pos.pnl)}
+                        {maskMoney(fmtSigned(pos.pnl), privMoney)}
                     </span>
                 </div>
             )}
