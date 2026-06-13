@@ -1,20 +1,31 @@
-## v0.1.22 — 下單錯誤透明化、期貨下單修正（issue #1 第三輪回饋）
+## v0.1.23 — AI Agent Codex parity 大升級
 
-### 下單修正
-- **下單被拒時顯示真正原因**：伺服器回 200 但委託 Failed 時，過去只看到「Failed」沒有任何說明 — 現在直接顯示伺服器訊息（CA 問題、帳戶未簽署、價格不合法…），所有下單路徑一體適用
-- **期貨連續月下單修正**：TXFR1/R2 這類連續月代碼是行情用別名，下單時自動解析成實際月份合約（TXFR1 → 當月台指期），修正「期貨下單只顯示 Failed」
-- **期貨轉倉組合單修正**：組合單自動推導並顯式帶入策略別（跨月價差/跨式/勒式/垂直價差），修正 `combo_type could not be auto-derived` 400；組合腳的連續月代碼同樣自動解析
+### AI Agent 核心能力
+- **更接近 Codex 的 agent loop**：支援 context compaction、plan steps、slash palette、`@代碼/股名` 商品帶入、輸入歷史、Esc-Esc backtrack、fork lineage、恢復對話 replay 與 stale snapshot 提醒。
+- **工具執行更完整**：新增 `run_shell`、workspace file tools、`edit_file`、exec sessions、generic approval、背景 shell session 輪詢/中止，以及更完整的 Tauri scope。
+- **MCP 與 web search**：支援 MCP client / per-session MCP 設定，並接上 provider-hosted web search。
+- **多模態與互動**：支援 vision input、structured questions、queued user steering、queue recall、完成通知、`/review`、`/status`、`/model`。
 
-### 安全
-- **平/反按鍵預設鎖定**：持倉的市價平倉/反手是整倉一鍵動作，現在預設上鎖，點表頭鎖頭解鎖才能按（防誤觸）
-- **CA 密碼防呆**：選了憑證檔但密碼空白時，啟動前直接擋下並說明（密碼空白會導致 CA 啟用失敗、下單全部 400）
+### 交易安全與環境感知
+- **同步 approval round-trip**：下單提案、允許/拒絕、工具結果會回到 model，agent 可依使用者決策接續處理。
+- **trade-policy engine**：自動下單不是豁免；超量、市價開倉、價格偏離等風險會被 prompt 或直接擋下。
+- **分析模式**：新增全域 analysis mode，強制唯讀，排程任務也遵守。
+- **交易環境進 context**：模擬/正式狀態會注入 agent context，恢復舊 session 時若環境改變會提醒；AI Agent UI 不再重複顯示模擬 chip，正式真錢警示仍保留。
 
-### 體驗
-- **持倉表加名稱欄**：代碼旁直接顯示股名/商品名
-- **T 字連動跨視窗**：彈出視窗的選擇權 T 字現在也能連動主視窗的下單面板與組合單腳（之前彈出後點擊無效）
+### Agent UX
+- **Codex-style content-first chat**：減少 box-in-box 視覺噪音，工具呼叫 running → done 原地更新，輸出過長時截斷並保留摘要。
+- **Composer context chips**：開新對話即可切工作資料夾、模型、權限；工作資料夾支援信任模型，只有 trusted folder 才載入 `AGENTS.md` / `NOTES.md`。
+- **Session 管理強化**：對話列表支援搜尋、分組、重新命名、per-session storage，避免 WKWebView 不支援 `window.prompt` 的 rename 問題。
+- **權限選單**：新增 Codex / Claude Code 風格的 permission dropdown，可快速切分析模式、確認下單、自動下單。
+- **模型選單對齊 Codex**：Reasoning / Model / Speed 分層選單，支援 reasoning effort 與 Fast mode；選完自動關閉、點外面或 Esc 關閉、模型選單與權限選單互斥；Fast 模式下才顯示閃電 icon。
 
-### AI Agent
-- 工具呼叫即時狀態：執行中顯示脈動點，完成後原地更新結果
+### Provider / Model
+- **Reasoning effort**：Codex Responses API 使用 `reasoning.effort`；OpenAI Chat Completions 使用 `reasoning_effort`；Anthropic 以 thinking budget 映射 low / medium / high / xhigh。
+- **Fast mode**：OpenAI / Codex request 帶 `service_tier: "priority"`；UI 顯示標準/快速狀態。
+- **模型回退**：Codex backend 若退役 model slug，會自動 fallback 到可用模型並記住切換。
+
+### 文件與網站
+- README 與 landing page 補上功能截圖 gallery，並修正 renamed screenshots 的 broken links。
 
 ---
 
