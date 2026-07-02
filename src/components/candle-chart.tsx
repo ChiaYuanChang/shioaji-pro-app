@@ -153,6 +153,10 @@ export function CandleChart({
         >(),
     );
     const legendRafRef = useRef(false);
+    // sub-pane layout memory: instId -> pane index（上次重建的配置）與
+    // instId -> 高度 px（使用者拖出來的上下圖比例，重建時還原）
+    const paneAssignRef = useRef(new Map<string, number>());
+    const paneHeightsRef = useRef(new Map<string, number>());
     const [dataVersion, setDataVersion] = useState(0);
     const barsRef = useRef<Candle[]>([]);
     // raw 1-min candles backing the current view — history pages merge here
@@ -637,6 +641,17 @@ export function CandleChart({
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
+        // remember the user-dragged height of every existing sub-pane
+        // BEFORE teardown — rebuilds must not reset the 上下圖比例
+        try {
+            const panes = chart.panes();
+            paneAssignRef.current.forEach((paneIdx, instId) => {
+                const h = panes[paneIdx]?.getHeight();
+                if (h && h > 0) paneHeightsRef.current.set(instId, h);
+            });
+        } catch {
+            // pane API differences must never take the chart down
+        }
         for (const series of indSeriesRef.current) {
             try {
                 chart.removeSeries(series);
@@ -653,8 +668,12 @@ export function CandleChart({
         } catch {
             // pane API differences must never take the chart down
         }
+        const paneAssign = new Map<string, number>();
         const bars = barsRef.current;
-        if (bars.length === 0) return;
+        if (bars.length === 0) {
+            paneAssignRef.current = paneAssign; // no panes exist right now
+            return;
+        }
 
         const toLineData = (pts: IndicatorPoint[]) =>
             pts.map((p) =>
@@ -684,6 +703,7 @@ export function CandleChart({
                 continue; // a bad param combination must not kill the chart
             }
             const pane = def.category === 'pane' ? paneIdx++ : 0;
+            if (pane > 0) paneAssign.set(inst.id, pane);
             let firstSeries: ISeriesApi<'Line' | 'Histogram'> | null = null;
             const metas: {
                 label: string;
@@ -817,13 +837,20 @@ export function CandleChart({
                 }
             }
         }
-        // compact sub-panes so the main chart keeps most of the height
+        // restore each instance's remembered pane height（使用者拖過的
+        // 上下圖比例在移除別的指標/改參數/收 K 棒重建後都要保住）；
+        // 只有第一次出現的 pane 用預設 110px
         try {
             const panes = chart.panes();
-            for (let i = 1; i < panes.length; i++) panes[i]!.setHeight(110);
+            paneAssign.forEach((paneIdx, instId) => {
+                panes[paneIdx]?.setHeight(
+                    paneHeightsRef.current.get(instId) ?? 110,
+                );
+            });
         } catch {
             // pane API differences must never take the chart down
         }
+        paneAssignRef.current = paneAssign;
         updateLegendRef.current(); // seed legend with latest values
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dataVersion, instancesKey, themeKey, tf.minutes]);
