@@ -606,6 +606,8 @@ export default function App() {
 
     const removeBlock = useCallback(
         (id: string) => {
+            const gone = workspace.blocks.find((b) => b.id === id);
+            if (gone) trackActivity('關面板', gone.type);
             updateWorkspace({
                 blocks: workspace.blocks.filter((b) => b.id !== id),
                 layout: workspace.layout.filter((l) => l.i !== id),
@@ -635,6 +637,7 @@ export default function App() {
             const preset = LAYOUT_PRESETS.find((p) => p.name === name);
             if (preset) {
                 updateWorkspace(structuredClone(preset.workspace));
+                trackActivity('套版面', name);
                 notify({
                     kind: 'info',
                     title: '版面已套用',
@@ -655,6 +658,7 @@ export default function App() {
             ];
             setProfiles(next);
             saveProfiles(next);
+            trackActivity('存版面', name);
             notify({
                 kind: 'ok',
                 title: '版面已儲存',
@@ -669,6 +673,7 @@ export default function App() {
             const p = profiles.find((x) => x.name === name);
             if (p) {
                 updateWorkspace(structuredClone(p.workspace));
+                trackActivity('套版面', name);
                 notify({
                     kind: 'info',
                     title: '版面已載入',
