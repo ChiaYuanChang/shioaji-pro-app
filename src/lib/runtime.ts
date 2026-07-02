@@ -38,10 +38,32 @@ export function setApiPort(port: number): boolean {
     return changed;
 }
 
-// PID of the server we spawned — the CLI daemon registry never sees a
-// foreground `server start`, so stopping/restarting across app launches
-// relies on remembering the child pid ourselves.
+// PID and port of the server we spawned — the CLI daemon registry never sees
+// a foreground `server start`, so stopping/restarting across app launches
+// relies on remembering the child ourselves. The port lets status reporting
+// tell "our spawn" apart from an attached external server (whose pid we
+// don't know).
 const PID_KEY = 'sj-pro-server-pid';
+const SPAWN_PORT_KEY = 'sj-pro-server-port';
+
+export function getSpawnPort(): number | null {
+    try {
+        const p = Number(localStorage.getItem(SPAWN_PORT_KEY));
+        if (Number.isInteger(p) && p > 0 && p < 65536) return p;
+    } catch {
+        // storage unavailable
+    }
+    return null;
+}
+
+export function setSpawnPort(port: number | null) {
+    try {
+        if (port === null) localStorage.removeItem(SPAWN_PORT_KEY);
+        else localStorage.setItem(SPAWN_PORT_KEY, String(port));
+    } catch {
+        // storage unavailable
+    }
+}
 
 export function getServerPid(): number | null {
     try {

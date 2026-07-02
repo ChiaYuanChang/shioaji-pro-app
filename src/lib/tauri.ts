@@ -6,9 +6,11 @@ import {
     LEGACY_PORT,
     getApiPort,
     getServerPid,
+    getSpawnPort,
     isTauri,
     setApiPort,
     setServerPid,
+    setSpawnPort,
 } from './runtime';
 import { notify } from './trade';
 
@@ -80,8 +82,19 @@ async function spawnServer(
     }
     // remember the child pid — a foreground `server start` never registers
     // with the CLI daemon state, so stop/restart (even after an app relaunch)
-    // must kill this pid ourselves
-    if (child?.pid) setServerPid(child.pid);
+    // must kill this pid ourselves. Also hand it to the Rust side, which
+    // reaps the child on app exit (a parentless server zombifies: socket
+    // bound, HTTP dead — and squats the port for the next launch).
+    if (child?.pid) {
+        setServerPid(child.pid);
+        setSpawnPort(port);
+        try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('register_server_pid', { pid: child.pid });
+        } catch {
+            // older shell without the command — exit reaping unavailable
+        }
+    }
     // poll until the server answers, or it dies, or we give up (~45s covers a
     // production login + CA activation + contract load)
     const deadline = Date.now() + 45_000;
@@ -126,7 +139,13 @@ export async function serverStatus(): Promise<ServerStatus | null> {
             port,
             healthy: await probeHealthy(port),
             simulation: info.simulation,
-            pid: getServerPid() ?? undefined,
+            // only claim a pid for the server we spawned — an attached
+            // external server has an unknown pid, and showing our stale
+            // record for it is misleading
+            pid:
+                getSpawnPort() === port
+                    ? (getServerPid() ?? undefined)
+                    : undefined,
         };
     }
     try {
@@ -310,6 +329,17 @@ export async function serverStart(opts: {
     let port = DEFAULT_PORT;
     try {
         const { invoke } = await import('@tauri-apps/api/core');
+        // nothing usable is answering, so any listener still bound on our
+        // ports is a zombie orphan (SIGKILLed app → dead pipe → HTTP dead) —
+        // reclaim our own before picking a port; foreign listeners refuse
+        // the ownership check and find_free_port dodges them below
+        for (const p of new Set([getApiPort(), DEFAULT_PORT])) {
+            await invoke('kill_shioaji', {
+                port: p,
+                pid: getServerPid(),
+            }).catch(() => undefined);
+        }
+        setServerPid(null);
         const free = await invoke<number>('find_free_port', {
             preferred: DEFAULT_PORT,
         });
@@ -357,14 +387,18 @@ export async function serverStart(opts: {
     };
 }
 
-// Stop whatever server is serving: kill the pid we spawned (foreground
-// servers never appear in the CLI daemon registry, so `server stop` alone
-// can't touch them), then let the CLI stop any daemonized one, and finally
-// verify the port actually went quiet.
-export async function serverStop(): Promise<SidecarResult> {
+// Stop the running server. Our own spawn is killed by pid/path proof; an
+// EXTERNAL server (the user's own CLI) is only stopped when the call carries
+// explicit user intent (`allowExternal` — the 停止/重啟 buttons), via the
+// CLI's own `server stop`. Automatic flows (boot restart on mode mismatch)
+// must never take the user's server down behind their back.
+export async function serverStop(opts?: {
+    allowExternal?: boolean;
+}): Promise<SidecarResult> {
     if (!isTauri) return { ok: false, output: '' };
     const st = await serverStatus();
-    const notes: string[] = [];
+    let killNote = '';
+    let killErr = '';
     const pid = getServerPid();
     // resolve the victim by port (survives lost pid records from older app
     // versions); the remembered pid is only a fallback for a server that is
@@ -378,24 +412,28 @@ export async function serverStop(): Promise<SidecarResult> {
                 pid,
             });
             setServerPid(null);
-            if (killed) notes.push(`已終止伺服器（:${port}）`);
+            setSpawnPort(null);
+            if (killed) killNote = `已終止伺服器（:${port}）`;
         } catch (e) {
             // ownership refused (external shioaji / foreign service) — keep
-            // the explanation for the caller; the pid record stays in case
-            // it referred to a not-yet-listening child
-            notes.push(String(e));
+            // the explanation; the pid record stays in case it referred to a
+            // not-yet-listening child
+            killErr = String(e);
         }
     }
-    // a user-run daemon (started via the CLI/dashboard) is stopped here
-    const cli = await sidecar(['server', 'stop']);
-    if (cli.ok && cli.output) notes.push(cli.output);
+    // the CLI can stop servers it registered itself (its daemon file tracks
+    // the last `server start`, including external foreground ones on ≥1.5.5)
+    // — explicit user intent only
+    if (opts?.allowExternal) {
+        await sidecar(['server', 'stop']);
+    }
     if (st?.running && st.port) {
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {
             if (!(await probeInfo(st.port))) {
                 return {
                     ok: true,
-                    output: notes.join('\n') || '伺服器已停止',
+                    output: killNote || `伺服器已停止（:${st.port}）`,
                 };
             }
             await new Promise((r) => setTimeout(r, 500));
@@ -403,14 +441,15 @@ export async function serverStop(): Promise<SidecarResult> {
         return {
             ok: false,
             output: [
-                ...notes,
-                `:${st.port} 上的伺服器仍在運行 — 可能不是本 App 啟動的，請手動停止`,
+                killNote,
+                killErr,
+                `:${st.port} 上的伺服器仍在運行${opts?.allowExternal ? '，請手動停止（終端機 Ctrl+C）' : ''}`,
             ]
-                .join('\n')
-                .trim(),
+                .filter(Boolean)
+                .join('\n'),
         };
     }
-    return { ok: true, output: notes.join('\n') || '伺服器未在運行' };
+    return { ok: true, output: killNote || '伺服器未在運行' };
 }
 
 // ---- settings store (API keys live in the app-data dir, not the repo) ----

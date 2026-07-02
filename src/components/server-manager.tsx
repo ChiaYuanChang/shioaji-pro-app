@@ -271,7 +271,7 @@ export function ServerManager({
     const doStop = async () => {
         setBusy(true);
         try {
-            const res = await serverStop();
+            const res = await serverStop({ allowExternal: true });
             setLastOutput(res.output.slice(-600));
             notify({
                 kind: res.ok ? 'ok' : 'err',
@@ -287,7 +287,7 @@ export function ServerManager({
     const doRestart = async () => {
         setBusy(true);
         try {
-            await serverStop();
+            await serverStop({ allowExternal: true });
             await new Promise((r) => setTimeout(r, 1200));
             await doStart();
         } finally {
