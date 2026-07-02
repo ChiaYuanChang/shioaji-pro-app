@@ -121,12 +121,24 @@ export const indMenu = style({
     display: 'flex',
     flexDirection: 'column',
     gap: '1px',
-    width: '9rem',
+    width: '13rem',
+    maxHeight: '340px',
+    overflowY: 'auto',
     background: vars.color.panelRaised,
     border: `1px solid ${vars.color.borderBright}`,
     borderRadius: vars.radius.md,
     boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
     padding: '4px',
+});
+
+export const indGroupTitle = style({
+    fontFamily: vars.font.display,
+    fontSize: '0.6rem',
+    fontWeight: 600,
+    letterSpacing: '0.08em',
+    color: vars.color.mutedForeground,
+    padding: '5px 8px 2px',
+    userSelect: 'none',
 });
 
 export const indItem = style({
@@ -225,6 +237,137 @@ export const chartHost = style({
     flex: 1,
     minHeight: 0,
     position: 'relative',
+});
+
+// ---- indicator legend / settings（圖上左上角）----
+
+export const legendRow = style({
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '3px',
+    maxWidth: '60%',
+    pointerEvents: 'auto',
+});
+
+export const legendChip = style({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '2px',
+    background: vars.color.panelRaised,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: '0 2px 0 6px',
+});
+
+export const legendName = style({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    fontFamily: vars.font.mono,
+    fontSize: '0.6rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    background: 'transparent',
+    border: 'none',
+    padding: '1px 0',
+    ':hover': { opacity: 0.8 },
+});
+
+export const legendClose = style({
+    display: 'inline-flex',
+    alignItems: 'center',
+    cursor: 'pointer',
+    background: 'transparent',
+    border: 'none',
+    color: vars.color.mutedForeground,
+    padding: '1px 2px',
+    ':hover': { color: vars.color.danger },
+});
+
+export const indSettings = style({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    width: '13rem',
+    background: vars.color.panelRaised,
+    border: `1px solid ${vars.color.borderBright}`,
+    borderRadius: vars.radius.md,
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+    padding: '6px 8px',
+    pointerEvents: 'auto',
+});
+
+export const indSettingsTitle = style({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    fontFamily: vars.font.display,
+    fontSize: '0.66rem',
+    fontWeight: 600,
+    color: vars.color.foreground,
+    paddingBottom: '2px',
+    borderBottom: `1px solid ${vars.color.border}`,
+});
+
+export const setRow = style({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '6px',
+    fontFamily: vars.font.body,
+    fontSize: '0.62rem',
+    color: vars.color.mutedForeground,
+});
+
+export const setInput = style({
+    width: '3.4rem',
+    fontFamily: vars.font.mono,
+    fontSize: '0.64rem',
+    textAlign: 'right',
+    color: vars.color.foreground,
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: '1px 4px',
+    outline: 'none',
+    ':focus': { borderColor: vars.color.accent },
+});
+
+export const swatchRow = style({
+    display: 'flex',
+    gap: '3px',
+    flexWrap: 'wrap',
+});
+
+const swatchBase = style({
+    width: '12px',
+    height: '12px',
+    borderRadius: '3px',
+    cursor: 'pointer',
+    border: '1px solid transparent',
+    padding: 0,
+});
+
+export const swatchBtn = styleVariants({
+    normal: [swatchBase],
+    active: [
+        swatchBase,
+        { borderColor: vars.color.foreground, transform: 'scale(1.15)' },
+    ],
+});
+
+export const indDelete = style({
+    fontFamily: vars.font.display,
+    fontSize: '0.62rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    background: 'transparent',
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    color: vars.color.danger,
+    padding: '2px 0',
+    marginTop: '2px',
+    ':hover': { borderColor: vars.color.danger, background: vars.color.muted },
 });
 
 export const emptyMsg = style({

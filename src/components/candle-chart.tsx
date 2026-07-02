@@ -7,15 +7,33 @@ import {
     createChart,
     HistogramSeries,
     LineSeries,
+    LineStyle,
     type IChartApi,
     type IPriceLine,
     type ISeriesApi,
+    type SeriesDataItemTypeMap,
     type UTCTimestamp,
 } from 'lightweight-charts';
-import { Bell, Crosshair, Maximize2, OctagonX, X } from 'lucide-react';
+import {
+    Bell,
+    Crosshair,
+    Maximize2,
+    OctagonX,
+    Settings2,
+    X,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuote } from '../hooks/use-stream';
-import { bollinger, ema, sma, vwap } from '../lib/indicators';
+import {
+    DEF_BY_TYPE,
+    INDICATOR_DEFS,
+    instanceLabel,
+    loadInstances,
+    newInstance,
+    saveInstances,
+    type IndicatorInstance,
+} from '../lib/indicator-defs';
+import type { IndicatorPoint } from '../lib/indicators';
 import { cancelOrder, fetchKbars, updateOrderPrice } from '../lib/shioaji';
 import { setPickedPrice } from '../lib/price-sync';
 import { notify, placeQuickOrder } from '../lib/trade';
@@ -61,25 +79,22 @@ const TRADE_MODES: { key: TradeMode; label: string }[] = [
     { key: 'alert', label: '警示' },
 ];
 
-const INDICATORS: { key: string; label: string; color: string }[] = [
-    { key: 'ma5', label: 'MA5', color: '#e0a43c' },
-    { key: 'ma10', label: 'MA10', color: '#3d8bff' },
-    { key: 'ma20', label: 'MA20', color: '#b06fff' },
-    { key: 'ma60', label: 'MA60', color: '#7e8798' },
-    { key: 'ema12', label: 'EMA12', color: '#19b6c9' },
-    { key: 'bb', label: 'BB(20,2)', color: '#8b94a7' },
-    { key: 'vwap', label: 'VWAP', color: '#f5f7fa' },
+// palette offered in indicator settings (professional terminal hues)
+const IND_PALETTE = [
+    '#e0a43c',
+    '#3d8bff',
+    '#b06fff',
+    '#19b6c9',
+    '#1fd286',
+    '#ff4d6a',
+    '#ff8a3d',
+    '#f5f7fa',
+    '#8b94a7',
+    '#5a89c9',
 ];
 
-function loadIndicators(): Set<string> {
-    try {
-        const raw = localStorage.getItem('sj-pro-indicators');
-        if (raw) return new Set(JSON.parse(raw));
-    } catch {
-        // defaults
-    }
-    return new Set();
-}
+// keep paging until this floor — one page per fetch, spans widen with tf
+const MAX_HISTORY_DAYS = 1095; // ~3 years
 
 export function CandleChart({
     contract,
@@ -110,11 +125,17 @@ export function CandleChart({
     const themeKey = `${themeSettings.mode}-${themeSettings.convention}`;
     const [mode, setMode] = useState<TradeMode>('observe');
     const [tradeQty, setTradeQty] = useState(1);
-    const [indicators, setIndicators] = useState<Set<string>>(loadIndicators);
+    const [instances, setInstances] =
+        useState<IndicatorInstance[]>(loadInstances);
     const [indMenuOpen, setIndMenuOpen] = useState(false);
+    const [settingsFor, setSettingsFor] = useState<string | null>(null);
     const [dataVersion, setDataVersion] = useState(0);
     const barsRef = useRef<Candle[]>([]);
-    const indSeriesRef = useRef<ISeriesApi<'Line'>[]>([]);
+    // raw 1-min candles backing the current view — history pages merge here
+    // and re-aggregate so buckets spanning a page seam stay correct
+    const rawRef = useRef<Candle[]>([]);
+    const loadMoreRef = useRef<(() => void) | null>(null);
+    const indSeriesRef = useRef<ISeriesApi<'Line' | 'Histogram'>[]>([]);
     const triggers = useTriggers().filter((t) => t.code === contract.code);
     const workingOrders = useMemo(
         () =>
@@ -279,6 +300,12 @@ export function CandleChart({
             setPickedPrice(c.code, roundToTick(c, Number(raw)));
         });
 
+        // TradingView-style infinite history: panning near the left edge
+        // pulls an older page of kbars (handler injected by the load effect)
+        chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+            if (range && range.from < 30) loadMoreRef.current?.();
+        });
+
         return () => {
             chart.remove();
             chartRef.current = null;
@@ -339,12 +366,14 @@ export function CandleChart({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [themeKey]);
 
-    // load kbars on symbol/timeframe change
+    // load kbars on symbol/timeframe change; pages of older history are
+    // pulled on demand by the visible-range subscription (loadMoreRef)
     useEffect(() => {
         let cancelled = false;
         const loadKey = `${contract.code}|${tf.minutes}`;
         loadedKeyRef.current = ''; // freeze tick updates while loading
         lastBarRef.current = null;
+        loadMoreRef.current = null;
         setEmpty(false);
         setLoading(true);
         const clearSeries = () => {
@@ -354,39 +383,97 @@ export function CandleChart({
             candleSeriesRef.current?.setData([]);
             volSeriesRef.current?.setData([]);
             barsRef.current = [];
+            rawRef.current = [];
             setDataVersion((v) => v + 1);
             loadedKeyRef.current = loadKey; // live bars may build from here
         };
+        const applyBars = (bars: Candle[]) => {
+            candleSeriesRef.current?.setData(
+                bars.map((b) => ({
+                    time: b.time as UTCTimestamp,
+                    open: b.open,
+                    high: b.high,
+                    low: b.low,
+                    close: b.close,
+                })),
+            );
+            volSeriesRef.current?.setData(
+                bars.map((b) => ({
+                    time: b.time as UTCTimestamp,
+                    value: b.volume,
+                    color: b.close >= b.open ? colors.upVol : colors.downVol,
+                })),
+            );
+            barsRef.current = bars;
+            setDataVersion((v) => v + 1);
+        };
+
+        // ---- older-history paging (TradingView-style infinite scroll) ----
+        let oldestDay: number = tf.days; // days-ago covered so far
+        let fetching = false;
+        let dryPages = 0; // consecutive empty pages → assume exhausted
+        const loadMore = () => {
+            if (fetching || cancelled) return;
+            if (loadedKeyRef.current !== loadKey) return;
+            if (dryPages >= 3 || oldestDay >= MAX_HISTORY_DAYS) return;
+            fetching = true;
+            const from = Math.min(oldestDay + tf.days, MAX_HISTORY_DAYS);
+            fetchKbars(
+                contract,
+                dateStrOffset(from),
+                dateStrOffset(oldestDay + 1),
+            )
+                .then((k) => {
+                    if (cancelled || loadedKeyRef.current !== loadKey) return;
+                    oldestDay = from;
+                    const boundary = rawRef.current[0]?.time ?? Infinity;
+                    const older = kbarsToCandles(k).filter(
+                        (b) => b.time < boundary,
+                    );
+                    if (older.length === 0) {
+                        dryPages += 1;
+                        return;
+                    }
+                    dryPages = 0;
+                    rawRef.current = [...older, ...rawRef.current];
+                    const bars = aggregate(rawRef.current, tf.minutes);
+                    // re-attach the live tail built from ticks since load —
+                    // raw history doesn't contain those bars
+                    const existing = barsRef.current;
+                    const lastAgg =
+                        bars.length > 0
+                            ? bars[bars.length - 1]!.time
+                            : -Infinity;
+                    for (const b of existing) {
+                        if (b.time === lastAgg) bars[bars.length - 1] = b;
+                        else if (b.time > lastAgg) bars.push(b);
+                    }
+                    applyBars(bars);
+                })
+                .catch(() => {
+                    dryPages += 1;
+                })
+                .finally(() => {
+                    fetching = false;
+                });
+        };
+
         fetchKbars(contract, dateStrOffset(tf.days), dateStrOffset(0))
             .then((k) => {
                 if (cancelled || !candleSeriesRef.current) return;
-                const bars = aggregate(kbarsToCandles(k), tf.minutes);
+                const raw = kbarsToCandles(k);
+                const bars = aggregate(raw, tf.minutes);
                 if (bars.length === 0) {
                     clearSeries();
                     setEmpty(true);
+                    loadMoreRef.current = loadMore; // history may still exist
                     return;
                 }
-                candleSeriesRef.current.setData(
-                    bars.map((b) => ({
-                        time: b.time as UTCTimestamp,
-                        open: b.open,
-                        high: b.high,
-                        low: b.low,
-                        close: b.close,
-                    })),
-                );
-                volSeriesRef.current?.setData(
-                    bars.map((b) => ({
-                        time: b.time as UTCTimestamp,
-                        value: b.volume,
-                        color:
-                            b.close >= b.open ? colors.upVol : colors.downVol,
-                    })),
-                );
+                rawRef.current = raw;
+                applyBars(bars);
                 lastBarRef.current = bars[bars.length - 1] ?? null;
-                barsRef.current = bars;
                 loadedKeyRef.current = loadKey;
-                setDataVersion((v) => v + 1);
+                loadMoreRef.current = loadMore;
                 chartRef.current?.timeScale().scrollToRealTime();
                 // a manual price-axis drag disables autoScale and pins the
                 // range; without re-enabling it the prior symbol's price band
@@ -418,6 +505,9 @@ export function CandleChart({
     }
     useEffect(() => {
         if (!tick || tick.code !== contract.code) return;
+        // 試撮 (simtrade) 揭示價可以是漲跌停天地價 — 畫進 K 棒會把
+        // Y 軸尺度撐爆（issue #5），一律排除
+        if (tick.simtrade) return;
         // history for this (symbol, timeframe) not in place yet
         if (loadedKeyRef.current !== `${contract.code}|${tf.minutes}`) return;
         const series = candleSeriesRef.current;
@@ -440,6 +530,11 @@ export function CandleChart({
                 close: price,
                 volume: tick.volume,
             };
+            // a fresh bucket = the previous bar closed — keep barsRef in
+            // sync (history paging re-attaches this tail) and recompute
+            // indicators once per bar close
+            barsRef.current.push(bar);
+            setDataVersion((v) => v + 1);
         } else {
             bar.high = Math.max(bar.high, price);
             bar.low = Math.min(bar.low, price);
@@ -466,7 +561,9 @@ export function CandleChart({
         }
     }, [tick, contract.code, tf.minutes]);
 
-    // overlay indicators
+    // indicator instances → chart series: overlays on the main pane,
+    // every oscillator instance in its own sub-pane (lightweight-charts v5)
+    const instancesKey = JSON.stringify(instances);
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
@@ -478,58 +575,145 @@ export function CandleChart({
             }
         }
         indSeriesRef.current = [];
+        // drop the now-empty sub-panes (pane 0 = main chart)
+        try {
+            for (let i = chart.panes().length - 1; i >= 1; i--) {
+                chart.removePane(i);
+            }
+        } catch {
+            // pane API differences must never take the chart down
+        }
         const bars = barsRef.current;
         if (bars.length === 0) return;
-        const addLine = (
-            data: { time: number; value: number }[],
-            color: string,
-            width: 1 | 2 = 1,
-        ) => {
-            const series = chart.addSeries(LineSeries, {
-                color,
-                lineWidth: width,
-                priceLineVisible: false,
-                lastValueVisible: false,
-                crosshairMarkerVisible: false,
-            });
-            series.setData(
-                data.map((d) => ({
-                    time: d.time as UTCTimestamp,
-                    value: d.value,
-                })),
-            );
-            indSeriesRef.current.push(series);
-        };
-        for (const ind of INDICATORS) {
-            if (!indicators.has(ind.key)) continue;
-            if (ind.key.startsWith('ma')) {
-                addLine(sma(bars, Number(ind.key.slice(2))), ind.color);
-            } else if (ind.key === 'ema12') {
-                addLine(ema(bars, 12), ind.color);
-            } else if (ind.key === 'vwap') {
-                addLine(vwap(bars), ind.color, 2);
-            } else if (ind.key === 'bb') {
-                const b = bollinger(bars);
-                addLine(b.mid, ind.color);
-                addLine(b.upper, ind.color);
-                addLine(b.lower, ind.color);
+
+        const toLineData = (pts: IndicatorPoint[]) =>
+            pts.map((p) =>
+                p.value === undefined
+                    ? { time: p.time as UTCTimestamp }
+                    : { time: p.time as UTCTimestamp, value: p.value },
+            ) as SeriesDataItemTypeMap['Line'][];
+
+        let paneIdx = 1;
+        for (const inst of instances) {
+            const def = DEF_BY_TYPE.get(inst.type);
+            if (!def) continue;
+            const params: Record<string, number> = {};
+            for (const p of def.params) {
+                params[p.key] = inst.params[p.key] ?? p.def;
+            }
+            let out: Record<string, IndicatorPoint[]>;
+            try {
+                out = def.compute(bars, params);
+            } catch {
+                continue; // a bad param combination must not kill the chart
+            }
+            const pane = def.category === 'pane' ? paneIdx++ : 0;
+            let firstSeries: ISeriesApi<'Line' | 'Histogram'> | null = null;
+            for (const o of def.outputs) {
+                const pts = out[o.key];
+                if (!pts) continue;
+                const color = inst.colors[o.key] ?? o.color;
+                if (o.kind === 'histogram') {
+                    const s = chart.addSeries(
+                        HistogramSeries,
+                        {
+                            color,
+                            priceLineVisible: false,
+                            lastValueVisible: false,
+                        },
+                        pane,
+                    );
+                    s.setData(
+                        pts
+                            .filter((p) => p.value !== undefined)
+                            .map((p) => ({
+                                time: p.time as UTCTimestamp,
+                                value: p.value!,
+                                color: o.signed
+                                    ? p.value! >= 0
+                                        ? colors.upVol
+                                        : colors.downVol
+                                    : color,
+                            })),
+                    );
+                    indSeriesRef.current.push(s);
+                    firstSeries ??= s;
+                } else {
+                    const s = chart.addSeries(
+                        LineSeries,
+                        {
+                            color,
+                            lineWidth: o.width ?? 1,
+                            lineStyle:
+                                o.kind === 'dashed'
+                                    ? LineStyle.Dashed
+                                    : LineStyle.Solid,
+                            priceLineVisible: false,
+                            lastValueVisible: false,
+                            crosshairMarkerVisible: false,
+                            ...(o.kind === 'points'
+                                ? {
+                                      lineVisible: false,
+                                      pointMarkersVisible: true,
+                                      pointMarkersRadius: 1.5,
+                                  }
+                                : {}),
+                        },
+                        pane,
+                    );
+                    s.setData(toLineData(pts));
+                    indSeriesRef.current.push(s);
+                    firstSeries ??= s;
+                }
+            }
+            // reference levels（RSI 30/70、KD 20/80…）in the sub-pane
+            if (pane > 0 && firstSeries && def.levels) {
+                for (const lv of def.levels) {
+                    firstSeries.createPriceLine({
+                        price: lv,
+                        color: colors.grid,
+                        lineWidth: 1,
+                        lineStyle: LineStyle.Dotted,
+                        axisLabelVisible: false,
+                        title: '',
+                    });
+                }
             }
         }
+        // compact sub-panes so the main chart keeps most of the height
+        try {
+            const panes = chart.panes();
+            for (let i = 1; i < panes.length; i++) panes[i]!.setHeight(110);
+        } catch {
+            // pane API differences must never take the chart down
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dataVersion, indicators]);
+    }, [dataVersion, instancesKey, themeKey]);
 
-    const toggleIndicator = (key: string) => {
-        setIndicators((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            localStorage.setItem(
-                'sj-pro-indicators',
-                JSON.stringify([...next]),
-            );
-            return next;
-        });
+    const commitInstances = (list: IndicatorInstance[]) => {
+        setInstances(list);
+        saveInstances(list);
     };
+    const addIndicator = (type: string) => {
+        commitInstances([...instances, newInstance(type)]);
+        setIndMenuOpen(false);
+    };
+    const removeIndicator = (id: string) => {
+        if (settingsFor === id) setSettingsFor(null);
+        commitInstances(instances.filter((i) => i.id !== id));
+    };
+    const patchInstance = (
+        id: string,
+        patch: Partial<Pick<IndicatorInstance, 'params' | 'colors'>>,
+    ) => {
+        commitInstances(
+            instances.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+        );
+    };
+    const settingsInst = instances.find((i) => i.id === settingsFor) ?? null;
+    const settingsDef = settingsInst
+        ? DEF_BY_TYPE.get(settingsInst.type) ?? null
+        : null;
 
     // recalibrate the view — re-fit both axes after the user has panned or
     // dragged the price scale into a corner (issue #6: no reset control)
@@ -767,12 +951,12 @@ export function CandleChart({
                     <button
                         className={
                             styles.modeBtn[
-                                indicators.size > 0 ? 'active' : 'normal'
+                                instances.length > 0 ? 'active' : 'normal'
                             ]
                         }
                         onClick={() => setIndMenuOpen((o) => !o)}
                     >
-                        指標{indicators.size > 0 ? ` ${indicators.size}` : ''}
+                        指標{instances.length > 0 ? ` ${instances.length}` : ''}
                     </button>
                     {indMenuOpen && (
                         <>
@@ -781,20 +965,46 @@ export function CandleChart({
                                 onClick={() => setIndMenuOpen(false)}
                             />
                             <div className={styles.indMenu}>
-                                {INDICATORS.map((ind) => (
+                                <div className={styles.indGroupTitle}>
+                                    主圖疊加
+                                </div>
+                                {INDICATOR_DEFS.filter(
+                                    (d) => d.category === 'overlay',
+                                ).map((d) => (
                                     <button
-                                        key={ind.key}
+                                        key={d.type}
                                         className={styles.indItem}
-                                        onClick={() =>
-                                            toggleIndicator(ind.key)
-                                        }
+                                        onClick={() => addIndicator(d.type)}
                                     >
                                         <span
                                             className={styles.indSwatch}
-                                            style={{ background: ind.color }}
+                                            style={{
+                                                background:
+                                                    d.outputs[0]!.color,
+                                            }}
                                         />
-                                        {ind.label}
-                                        {indicators.has(ind.key) && ' ✓'}
+                                        {d.label}
+                                    </button>
+                                ))}
+                                <div className={styles.indGroupTitle}>
+                                    副圖指標
+                                </div>
+                                {INDICATOR_DEFS.filter(
+                                    (d) => d.category === 'pane',
+                                ).map((d) => (
+                                    <button
+                                        key={d.type}
+                                        className={styles.indItem}
+                                        onClick={() => addIndicator(d.type)}
+                                    >
+                                        <span
+                                            className={styles.indSwatch}
+                                            style={{
+                                                background:
+                                                    d.outputs[0]!.color,
+                                            }}
+                                        />
+                                        {d.label}
                                     </button>
                                 ))}
                             </div>
@@ -824,8 +1034,152 @@ export function CandleChart({
                         {mode === 'alert' && '點擊價位設定到價警示（只通知不下單）'}
                     </div>
                 )}
-                {(workingOrders.length > 0 || triggers.length > 0) && (
+                {(workingOrders.length > 0 ||
+                    triggers.length > 0 ||
+                    instances.length > 0) && (
                     <div className={styles.triggerList}>
+                        {instances.length > 0 && (
+                            <div className={styles.legendRow}>
+                                {instances.map((inst) => {
+                                    const def = DEF_BY_TYPE.get(inst.type);
+                                    const first = def?.outputs[0];
+                                    const color = first
+                                        ? inst.colors[first.key] ?? first.color
+                                        : '#8b94a7';
+                                    return (
+                                        <span
+                                            key={inst.id}
+                                            className={styles.legendChip}
+                                        >
+                                            <button
+                                                className={styles.legendName}
+                                                style={{ color }}
+                                                title='指標設定'
+                                                onClick={() =>
+                                                    setSettingsFor(
+                                                        settingsFor === inst.id
+                                                            ? null
+                                                            : inst.id,
+                                                    )
+                                                }
+                                            >
+                                                {instanceLabel(inst)}
+                                                <Settings2 size={9} />
+                                            </button>
+                                            <button
+                                                className={styles.legendClose}
+                                                title='移除指標'
+                                                onClick={() =>
+                                                    removeIndicator(inst.id)
+                                                }
+                                            >
+                                                <X size={9} />
+                                            </button>
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {settingsInst && settingsDef && (
+                            <div className={styles.indSettings}>
+                                <div className={styles.indSettingsTitle}>
+                                    {settingsDef.label}
+                                    <button
+                                        className={styles.legendClose}
+                                        onClick={() => setSettingsFor(null)}
+                                    >
+                                        <X size={10} />
+                                    </button>
+                                </div>
+                                {settingsDef.params.map((p) => (
+                                    <label
+                                        key={p.key}
+                                        className={styles.setRow}
+                                    >
+                                        <span>{p.label}</span>
+                                        <input
+                                            type='number'
+                                            className={styles.setInput}
+                                            min={p.min}
+                                            max={p.max}
+                                            step={p.step ?? 1}
+                                            value={
+                                                settingsInst.params[p.key] ??
+                                                p.def
+                                            }
+                                            onChange={(e) => {
+                                                const v = Number(
+                                                    e.target.value,
+                                                );
+                                                if (!Number.isFinite(v)) {
+                                                    return;
+                                                }
+                                                patchInstance(
+                                                    settingsInst.id,
+                                                    {
+                                                        params: {
+                                                            ...settingsInst.params,
+                                                            [p.key]: Math.min(
+                                                                p.max,
+                                                                Math.max(
+                                                                    p.min,
+                                                                    v,
+                                                                ),
+                                                            ),
+                                                        },
+                                                    },
+                                                );
+                                            }}
+                                        />
+                                    </label>
+                                ))}
+                                {settingsDef.outputs.map((o) => (
+                                    <div
+                                        key={o.key}
+                                        className={styles.setRow}
+                                    >
+                                        <span>{o.label}</span>
+                                        <div className={styles.swatchRow}>
+                                            {IND_PALETTE.map((c) => (
+                                                <button
+                                                    key={c}
+                                                    className={
+                                                        styles.swatchBtn[
+                                                            (settingsInst
+                                                                .colors[
+                                                                o.key
+                                                            ] ?? o.color) === c
+                                                                ? 'active'
+                                                                : 'normal'
+                                                        ]
+                                                    }
+                                                    style={{ background: c }}
+                                                    onClick={() =>
+                                                        patchInstance(
+                                                            settingsInst.id,
+                                                            {
+                                                                colors: {
+                                                                    ...settingsInst.colors,
+                                                                    [o.key]: c,
+                                                                },
+                                                            },
+                                                        )
+                                                    }
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                                <button
+                                    className={styles.indDelete}
+                                    onClick={() =>
+                                        removeIndicator(settingsInst.id)
+                                    }
+                                >
+                                    移除指標
+                                </button>
+                            </div>
+                        )}
                         {workingOrders.map((t) => {
                             const price =
                                 t.status.modified_price || t.order.price;
