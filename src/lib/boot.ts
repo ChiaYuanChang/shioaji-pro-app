@@ -11,6 +11,7 @@ import {
     subscribeTradeEvents,
 } from './shioaji';
 import { agentModule } from './features';
+import { describeOrderReport } from './order-report';
 import { isTauri, setApiPort } from './runtime';
 import { onOrderEvent } from './stream';
 import { loadDesktopSettings, serverStart, serverStatus } from './tauri';
@@ -25,15 +26,11 @@ export function bootstrap() {
     agentModule?.ensureScheduler();
     // every order event lands in the 通知中心 log (toasts stay separate)
     onOrderEvent((ev) => {
-        const deal = ev.code && ev.price !== undefined;
+        const d = describeOrderReport(ev);
         logNotice({
-            kind: 'info',
-            title: deal
-                ? `成交 ${ev.code}`
-                : `委託回報 ${ev.contract?.code ?? ''}`,
-            body: deal
-                ? `${ev.action === 'Buy' ? '買' : '賣'} ${ev.quantity} @ ${ev.price}`
-                : `${ev.operation?.op_type ?? ''} ${ev.operation?.op_msg || ev.order?.id?.slice(0, 12) || ''}`,
+            kind: d.kind === 'err' ? 'err' : 'info',
+            title: d.title,
+            body: d.lines.map((l) => l.text).join(' ｜ '),
         });
     });
     void run();

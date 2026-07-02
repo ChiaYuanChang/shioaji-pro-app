@@ -4,7 +4,10 @@
 
 import { getApiBase } from './runtime';
 import type { SseBidAsk, SseTick } from './types/market';
-import type { OrderEventData } from './types/order';
+import {
+    normalizeOrderEvent,
+    type OrderEventReport,
+} from './order-report';
 
 export type StreamStatus = 'connecting' | 'live' | 'down';
 
@@ -39,7 +42,7 @@ let lastHeartbeat = 0;
 
 const quoteListeners = new Map<string, Set<Listener>>();
 const statusListeners = new Set<Listener>();
-const orderEventListeners = new Set<(ev: OrderEventData) => void>();
+const orderEventListeners = new Set<(ev: OrderEventReport) => void>();
 const tickTapeListeners = new Set<(tick: SseTick) => void>();
 
 function emitQuote(code: string) {
@@ -161,8 +164,12 @@ function connect() {
         es.addEventListener(ev, (e) => handleBidAsk((e as MessageEvent).data));
     }
     es.addEventListener('order_event', (e) => {
-        const data = JSON.parse((e as MessageEvent).data) as OrderEventData;
-        orderEventListeners.forEach((l) => l(data));
+        // the server wraps the body one level under its variant name
+        // ({state, data:{FuturesOrder:{...}}}) — normalize before fan-out
+        const report = normalizeOrderEvent(
+            JSON.parse((e as MessageEvent).data),
+        );
+        if (report) orderEventListeners.forEach((l) => l(report));
     });
     es.addEventListener('heartbeat', () => {
         lastHeartbeat = Date.now();
@@ -247,7 +254,7 @@ export function getSubscriptionCount(): number {
     return subscriptionRegistry.size;
 }
 
-export function onOrderEvent(listener: (ev: OrderEventData) => void) {
+export function onOrderEvent(listener: (ev: OrderEventReport) => void) {
     orderEventListeners.add(listener);
     return () => {
         orderEventListeners.delete(listener);

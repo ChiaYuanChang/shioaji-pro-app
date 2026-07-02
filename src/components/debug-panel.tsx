@@ -13,8 +13,8 @@ import {
     onOrderEvent,
 } from '../lib/stream';
 import { useTier } from '../lib/features';
+import type { OrderEventReport } from '../lib/order-report';
 import { appVersion } from '../lib/tauri';
-import type { OrderEventData } from '../lib/types/order';
 import * as dockStyles from './bottom-dock.css';
 import * as styles from './debug-panel.css';
 
@@ -26,7 +26,7 @@ export function DebugPanel() {
     // ticks/sec over a sliding 5s window
     const tickTimes = useRef<number[]>([]);
     const [events, setEvents] = useState<
-        { ts: number; data: OrderEventData }[]
+        { ts: number; data: OrderEventReport }[]
     >([]);
     const [ver, setVer] = useState('');
 
@@ -124,7 +124,7 @@ export function DebugPanel() {
             {[...events].reverse().map((e) => (
                 <pre key={e.ts} className={styles.eventDump}>
                     {new Date(e.ts).toLocaleTimeString('en-GB')}{' '}
-                    {JSON.stringify(e.data).slice(0, 220)}
+                    {JSON.stringify(e.data.raw ?? e.data).slice(0, 220)}
                 </pre>
             ))}
         </div>

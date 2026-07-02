@@ -93,24 +93,6 @@ export const ACTIVE_ORDER_STATUSES: ReadonlySet<string> = new Set([
     'PartFilled',
 ]);
 
-// SSE order_event payload
-export interface OrderEventData {
-    operation: { op_type: string; op_code: string; op_msg: string };
-    order?: {
-        id?: string;
-        seqno?: string;
-        ordno?: string;
-        action?: Action;
-        price?: number;
-        quantity?: number;
-        [k: string]: unknown;
-    };
-    contract?: { code?: string; [k: string]: unknown };
-    status?: { [k: string]: unknown };
-    // deal events have flat fields
-    code?: string;
-    price?: number;
-    quantity?: number;
-    action?: Action;
-    [k: string]: unknown;
-}
+// SSE order_event payloads are normalized in lib/order-report.ts — the
+// server nests the body under its serde variant name
+// ({state, data:{FuturesOrder:{...}}}); consumers get OrderEventReport.

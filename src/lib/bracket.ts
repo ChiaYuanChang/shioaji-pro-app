@@ -109,22 +109,10 @@ function ensureWatcher() {
     pollTimer = setInterval(pollPending, 4000);
     // fast path: deal events over SSE
     onOrderEvent((ev) => {
-        if (pending.size === 0) return;
-        const seqno =
-            (ev.order?.seqno as string | undefined) ??
-            (ev['seqno'] as string | undefined);
-        const qty =
-            (ev.quantity as number | undefined) ??
-            (ev.order?.quantity as number | undefined) ??
-            0;
-        if (!seqno) return;
+        if (pending.size === 0 || ev.kind !== 'deal' || !ev.seqno) return;
         for (const b of [...pending.values()]) {
-            if (b.seqno && b.seqno === seqno) {
-                const opType = ev.operation?.op_type ?? '';
-                // deal events arrive with op_type Deal or as flat deal payloads
-                if (opType === 'Deal' || ev.code !== undefined) {
-                    activate(b, qty);
-                }
+            if (b.seqno && b.seqno === ev.seqno) {
+                activate(b, ev.quantity);
             }
         }
     });
