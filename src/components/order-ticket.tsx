@@ -428,6 +428,7 @@ export function OrderTicket({
                     price={priceType === 'LMT' ? Number(price) : null}
                     qty={qty}
                     odd={!isFutures && orderLot === 'IntradayOdd'}
+                    daytrade={!isFutures && daytradeShort}
                 />
 
                 <button
@@ -463,8 +464,9 @@ export function OrderTicket({
     );
 }
 
-// fallback only — the API's contract.multiplier is authoritative
-// (stock/ETF futures are 2000 shares, index futures vary)
+// fallback only — the API's contract.multiplier is authoritative when > 0
+// (the shioaji server currently reports multiplier 0 for futures, so this
+// table + the underlying-based rules below are the effective path)
 const FUT_MULTIPLIER: Record<string, number> = {
     TXF: 200,
     MXF: 50,
@@ -472,6 +474,24 @@ const FUT_MULTIPLIER: Record<string, number> = {
     EXF: 4000,
     FXF: 1000,
 };
+
+// TAIFEX 契約單位: 股票期貨 2,000 股/口、ETF 期貨 10,000 受益權單位/口
+// (issue #2: 股票期貨契約價值被算成 價格×50)
+function contractMultiplier(contract: ContractInfo): number {
+    if (contract.multiplier && contract.multiplier > 0) {
+        return contract.multiplier;
+    }
+    const byCategory = FUT_MULTIPLIER[contract.category];
+    if (byCategory) return byCategory;
+    const underlying = contract.underlying_code ?? '';
+    if (contract.underlying_kind === 'E' || underlying.startsWith('00')) {
+        return 10000; // ETF futures
+    }
+    if (contract.underlying_kind === 'S' || underlying) {
+        return 2000; // single-stock futures/options
+    }
+    return 50; // index products default (TXO-style)
+}
 
 // 期交稅率 per product family (per side, on contract value):
 // equity-type futures 0.00002; options 0.001 on premium;
@@ -488,20 +508,19 @@ function CostEstimate({
     price,
     qty,
     odd,
+    daytrade,
 }: {
     contract: ContractInfo;
     action: Action;
     price: number | null;
     qty: number;
     odd: boolean;
+    daytrade: boolean;
 }) {
     if (!price || !Number.isFinite(price) || price <= 0 || qty <= 0) {
         return null;
     }
-    const mult =
-        contract.multiplier && contract.multiplier > 0
-            ? contract.multiplier
-            : (FUT_MULTIPLIER[contract.category] ?? 50);
+    const mult = contractMultiplier(contract);
     if (contract.security_type === 'OPT') {
         // options: premium × multiplier; 期交稅 0.1% of premium value
         const premium = price * mult * qty;
@@ -529,10 +548,9 @@ function CostEstimate({
     const shares = odd ? qty : qty * 1000;
     const notional = price * shares;
     const fee = Math.max(odd ? 1 : 20, Math.round(notional * 0.001425));
-    const tax =
-        action === 'Sell'
-            ? Math.round(notional * (isEtf ? 0.001 : 0.003))
-            : 0;
+    // 證交稅（賣出）: 一般 0.3%、當沖賣出減半 0.15%、ETF 0.1%（不適用減半）
+    const taxRate = isEtf ? 0.001 : daytrade ? 0.0015 : 0.003;
+    const tax = action === 'Sell' ? Math.round(notional * taxRate) : 0;
     return (
         <span className={styles.costRow}>
             金額 {fmtPrice(notional, 0)} · 手續費 ≈ {fee}

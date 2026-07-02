@@ -33,4 +33,6 @@ export interface ContractInfo extends Contract {
     option_right?: string;
     delivery_month?: string;
     underlying_code?: string;
+    // 'I' index, 'S' stock, 'E' ETF (TAIFEX underlying type)
+    underlying_kind?: string;
 }
