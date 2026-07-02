@@ -18,8 +18,11 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
     return {
         base: env.VITE_BASE ?? '/',
-        // shioaji app upload flattens nested paths — emit a flat bundle
-        build: { assetsDir: '' },
+        // shioaji app upload flattens nested paths — emit a flat bundle.
+        // target: old Intel Macs run older WKWebView (Safari 13–15 era);
+        // Vite 8's default (baseline-widely-available ≈ Safari 16) emits
+        // syntax those webviews cannot parse → white screen on launch (#4)
+        build: { assetsDir: '', target: ['es2020', 'safari13'] },
         // react-draggable (react-grid-layout dep) reads process.env at runtime
         define: {
             'process.env': {},

@@ -1,5 +1,8 @@
 // src/main.tsx
 
+// polyfills MUST stay the first import — patches globals (structuredClone,
+// AbortSignal.timeout, …) before any dependency module evaluates
+import './lib/polyfills';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
