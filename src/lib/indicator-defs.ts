@@ -54,6 +54,8 @@ export interface IndicatorDef {
     type: string;
     label: string; // list label, e.g. "MA 移動平均"
     short: string; // legend label, e.g. "MA"
+    desc: string; // one-line description shown in the picker
+    aliases: string[]; // extra search keywords（中英文）
     category: 'overlay' | 'pane';
     params: ParamDef[];
     outputs: OutputDef[];
@@ -71,6 +73,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'sma',
         label: 'MA 移動平均',
         short: 'MA',
+        desc: '簡單移動平均線，最常用的趨勢基準',
+        aliases: ['ma', 'sma', 'moving average', '均線', '移動平均'],
         category: 'overlay',
         params: [{ key: 'period', label: '週期', def: 20, min: 1, max: 500 }],
         outputs: [{ key: 'line', label: 'MA', kind: 'line', color: '#e0a43c' }],
@@ -80,6 +84,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'ema',
         label: 'EMA 指數移動平均',
         short: 'EMA',
+        desc: '加重近期價格的均線，反應比 MA 快',
+        aliases: ['ema', 'exponential', '指數均線'],
         category: 'overlay',
         params: [{ key: 'period', label: '週期', def: 12, min: 1, max: 500 }],
         outputs: [{ key: 'line', label: 'EMA', kind: 'line', color: '#19b6c9' }],
@@ -89,6 +95,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'wma',
         label: 'WMA 加權移動平均',
         short: 'WMA',
+        desc: '線性加權均線，越近的 K 棒權重越大',
+        aliases: ['wma', 'weighted', '加權均線'],
         category: 'overlay',
         params: [{ key: 'period', label: '週期', def: 20, min: 1, max: 500 }],
         outputs: [{ key: 'line', label: 'WMA', kind: 'line', color: '#b06fff' }],
@@ -98,6 +106,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'boll',
         label: 'BOLL 布林通道',
         short: 'BOLL',
+        desc: '均線 ± 標準差通道，衡量波動與乖離',
+        aliases: ['boll', 'bollinger', 'bands', '布林', '保力加'],
         category: 'overlay',
         params: [
             { key: 'period', label: '週期', def: 20, min: 2, max: 200 },
@@ -117,6 +127,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'vwap',
         label: 'VWAP 成交量加權均價',
         short: 'VWAP',
+        desc: '當日成交量加權平均價，日內交易基準線',
+        aliases: ['vwap', 'volume weighted', '均價線'],
         category: 'overlay',
         params: [],
         outputs: [
@@ -128,6 +140,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'sar',
         label: 'SAR 拋物線',
         short: 'SAR',
+        desc: '拋物線停損轉向點，追蹤趨勢的移動停損',
+        aliases: ['sar', 'parabolic', '拋物線', '停損點'],
         category: 'overlay',
         params: [
             { key: 'step', label: '加速因子', def: 0.02, min: 0.01, max: 0.1, step: 0.01 },
@@ -142,6 +156,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'supertrend',
         label: 'SuperTrend 超級趨勢',
         short: 'ST',
+        desc: 'ATR 通道趨勢線，多空翻轉一目了然',
+        aliases: ['supertrend', 'st', '超級趨勢'],
         category: 'overlay',
         params: [
             { key: 'period', label: 'ATR 週期', def: 10, min: 1, max: 100 },
@@ -160,6 +176,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'donchian',
         label: 'Donchian 唐奇安通道',
         short: 'DC',
+        desc: 'N 期最高/最低價通道，突破策略經典',
+        aliases: ['donchian', 'channel', '唐奇安', '海龜'],
         category: 'overlay',
         params: [{ key: 'period', label: '週期', def: 20, min: 2, max: 200 }],
         outputs: [
@@ -176,6 +194,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'keltner',
         label: 'Keltner 肯特納通道',
         short: 'KC',
+        desc: 'EMA ± ATR 通道，比布林更平滑的波動帶',
+        aliases: ['keltner', 'kc', '肯特納'],
         category: 'overlay',
         params: [
             { key: 'period', label: 'EMA 週期', def: 20, min: 2, max: 200 },
@@ -197,6 +217,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'macd',
         label: 'MACD 指數平滑異同',
         short: 'MACD',
+        desc: 'DIF/DEA 交叉與柱狀動能，最經典的趨勢動能指標',
+        aliases: ['macd', 'dif', 'dea', '指數平滑'],
         category: 'pane',
         params: [
             { key: 'fast', label: '快線', def: 12, min: 1, max: 100 },
@@ -218,6 +240,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'rsi',
         label: 'RSI 相對強弱',
         short: 'RSI',
+        desc: '漲跌力道比值 0-100，30/70 超賣超買',
+        aliases: ['rsi', 'relative strength', '相對強弱'],
         category: 'pane',
         params: [{ key: 'period', label: '週期', def: 14, min: 2, max: 100 }],
         outputs: [{ key: 'line', label: 'RSI', kind: 'line', color: '#b06fff' }],
@@ -228,6 +252,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'kd',
         label: 'KD 隨機指標',
         short: 'KD',
+        desc: '台股慣用 (9,3,3)，K/D 交叉與 20/80 鈍化',
+        aliases: ['kd', 'stochastic', 'stoch', '隨機', '威廉KD'],
         category: 'pane',
         params: [
             { key: 'period', label: 'RSV 週期', def: 9, min: 1, max: 100 },
@@ -248,6 +274,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'stochrsi',
         label: 'StochRSI 隨機相對強弱',
         short: 'SRSI',
+        desc: '對 RSI 再取隨機值，靈敏度更高的擺盪指標',
+        aliases: ['stochrsi', 'srsi', '隨機rsi'],
         category: 'pane',
         params: [
             { key: 'rsiPeriod', label: 'RSI 週期', def: 14, min: 2, max: 100 },
@@ -269,6 +297,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'cci',
         label: 'CCI 順勢指標',
         short: 'CCI',
+        desc: '價格偏離統計均值的程度，±100 為超買賣區',
+        aliases: ['cci', 'commodity channel', '順勢'],
         category: 'pane',
         params: [{ key: 'period', label: '週期', def: 20, min: 2, max: 200 }],
         outputs: [{ key: 'line', label: 'CCI', kind: 'line', color: '#19b6c9' }],
@@ -279,6 +309,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'atr',
         label: 'ATR 真實波幅',
         short: 'ATR',
+        desc: '平均真實波動範圍，衡量波動大小與停損距離',
+        aliases: ['atr', 'average true range', '波幅', '真實波動'],
         category: 'pane',
         params: [{ key: 'period', label: '週期', def: 14, min: 1, max: 100 }],
         outputs: [{ key: 'line', label: 'ATR', kind: 'line', color: '#e0a43c' }],
@@ -288,6 +320,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'obv',
         label: 'OBV 能量潮',
         short: 'OBV',
+        desc: '成交量累積方向，量先價行的量能指標',
+        aliases: ['obv', 'on balance volume', '能量潮', '量能'],
         category: 'pane',
         params: [],
         outputs: [{ key: 'line', label: 'OBV', kind: 'line', color: '#5a89c9' }],
@@ -297,6 +331,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'mfi',
         label: 'MFI 資金流量',
         short: 'MFI',
+        desc: '帶量的 RSI，衡量資金流入流出強度',
+        aliases: ['mfi', 'money flow', '資金流'],
         category: 'pane',
         params: [{ key: 'period', label: '週期', def: 14, min: 2, max: 100 }],
         outputs: [{ key: 'line', label: 'MFI', kind: 'line', color: '#1fd286' }],
@@ -307,6 +343,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'willr',
         label: 'W%R 威廉指標',
         short: 'W%R',
+        desc: '收盤價在 N 期高低區間的位置，-20/-80 超買賣',
+        aliases: ['willr', 'williams', '威廉'],
         category: 'pane',
         params: [{ key: 'period', label: '週期', def: 14, min: 2, max: 100 }],
         outputs: [{ key: 'line', label: 'W%R', kind: 'line', color: '#ff8a3d' }],
@@ -317,6 +355,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'dmi',
         label: 'DMI/ADX 趨向指標',
         short: 'DMI',
+        desc: '+DI/-DI 多空方向與 ADX 趨勢強度',
+        aliases: ['dmi', 'adx', 'di', '趨向'],
         category: 'pane',
         params: [
             { key: 'period', label: 'DI 週期', def: 14, min: 2, max: 100 },
@@ -337,6 +377,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'roc',
         label: 'ROC 變動率',
         short: 'ROC',
+        desc: 'N 期價格變動百分比，動能與背離觀察',
+        aliases: ['roc', 'rate of change', '變動率', '動能'],
         category: 'pane',
         params: [{ key: 'period', label: '週期', def: 12, min: 1, max: 200 }],
         outputs: [{ key: 'line', label: 'ROC', kind: 'line', color: '#b06fff' }],
@@ -347,6 +389,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
         type: 'bias',
         label: 'BIAS 乖離率',
         short: 'BIAS',
+        desc: '價格偏離均線的百分比，台股常用的回歸指標',
+        aliases: ['bias', '乖離', '乖離率'],
         category: 'pane',
         params: [{ key: 'period', label: 'MA 週期', def: 20, min: 1, max: 200 }],
         outputs: [{ key: 'line', label: 'BIAS', kind: 'line', color: '#19b6c9' }],
@@ -359,12 +403,36 @@ export const DEF_BY_TYPE = new Map(INDICATOR_DEFS.map((d) => [d.type, d]));
 
 // ---- instances ----
 
+export interface OutputStyle {
+    color?: string;
+    width?: 1 | 2 | 3 | 4;
+    visible?: boolean;
+}
+
 export interface IndicatorInstance {
     id: string;
     type: string;
     params: Record<string, number>;
-    // output key -> color override
+    // output key -> color override（legacy，讀取時遷移到 styles）
     colors: Record<string, string>;
+    // output key -> style overrides
+    styles?: Record<string, OutputStyle>;
+    hidden?: boolean; // 眼睛暫時隱藏，不刪設定
+}
+
+// merged effective style for one output
+export function outputStyle(
+    inst: IndicatorInstance,
+    def: IndicatorDef,
+    key: string,
+): Required<OutputStyle> {
+    const out = def.outputs.find((o) => o.key === key);
+    const s = inst.styles?.[key] ?? {};
+    return {
+        color: s.color ?? inst.colors[key] ?? out?.color ?? '#8b94a7',
+        width: s.width ?? out?.width ?? 1,
+        visible: s.visible ?? true,
+    };
 }
 
 export function instanceLabel(inst: IndicatorInstance): string {
@@ -437,5 +505,27 @@ export function saveInstances(list: IndicatorInstance[]) {
         localStorage.setItem(STORE_KEY, JSON.stringify(list));
     } catch {
         // storage full/unavailable — keep in-memory state
+    }
+}
+
+// ---- favorites（指標選擇器的星號收藏）----
+
+const FAV_KEY = 'sj-pro-ind-favs';
+
+export function loadFavorites(): Set<string> {
+    try {
+        const raw = localStorage.getItem(FAV_KEY);
+        if (raw) return new Set(JSON.parse(raw) as string[]);
+    } catch {
+        // default empty
+    }
+    return new Set();
+}
+
+export function saveFavorites(favs: Set<string>) {
+    try {
+        localStorage.setItem(FAV_KEY, JSON.stringify([...favs]));
+    } catch {
+        // keep in-memory
     }
 }

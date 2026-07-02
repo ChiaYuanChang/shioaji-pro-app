@@ -11,12 +11,15 @@ import {
     type IChartApi,
     type IPriceLine,
     type ISeriesApi,
+    type MouseEventParams,
     type SeriesDataItemTypeMap,
     type UTCTimestamp,
 } from 'lightweight-charts';
 import {
     Bell,
     Crosshair,
+    Eye,
+    EyeOff,
     Maximize2,
     OctagonX,
     Settings2,
@@ -25,11 +28,15 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuote } from '../hooks/use-stream';
 import {
+    IndicatorDialog,
+    IndicatorSettingsModal,
+} from './indicator-dialog';
+import {
     DEF_BY_TYPE,
-    INDICATOR_DEFS,
     instanceLabel,
     loadInstances,
     newInstance,
+    outputStyle,
     saveInstances,
     type IndicatorInstance,
 } from '../lib/indicator-defs';
@@ -127,8 +134,26 @@ export function CandleChart({
     const [tradeQty, setTradeQty] = useState(1);
     const [instances, setInstances] =
         useState<IndicatorInstance[]>(loadInstances);
-    const [indMenuOpen, setIndMenuOpen] = useState(false);
+    const [pickerOpen, setPickerOpen] = useState(false);
     const [settingsFor, setSettingsFor] = useState<string | null>(null);
+    // instances snapshot taken when settings opens — 取消 restores it
+    const settingsSnapshotRef = useRef<string>('');
+    // legend live values: instId -> per-output {label,text,color}
+    const [legendValues, setLegendValues] = useState<
+        Record<string, { label: string; text: string; color: string }[]>
+    >({});
+    const legendMetaRef = useRef(
+        new Map<
+            string,
+            {
+                label: string;
+                color: string;
+                series: ISeriesApi<'Line' | 'Histogram'>;
+                last?: number;
+            }[]
+        >(),
+    );
+    const legendRafRef = useRef(false);
     const [dataVersion, setDataVersion] = useState(0);
     const barsRef = useRef<Candle[]>([]);
     // raw 1-min candles backing the current view — history pages merge here
@@ -162,6 +187,37 @@ export function CandleChart({
     const contractRef = useRef(contract);
     contractRef.current = contract;
     const lastPriceRef = useRef<number | null>(null);
+
+    // legend readout — crosshair position when hovering, latest bar otherwise
+    const fmtLegendVal = (v: number) =>
+        Math.abs(v) >= 10000
+            ? v.toLocaleString('en-US', { maximumFractionDigits: 0 })
+            : Math.abs(v) >= 100
+              ? v.toFixed(1)
+              : v.toFixed(2);
+    const updateLegend = (param?: MouseEventParams) => {
+        const out: Record<
+            string,
+            { label: string; text: string; color: string }[]
+        > = {};
+        legendMetaRef.current.forEach((metas, instId) => {
+            out[instId] = metas.map((m) => {
+                let v = m.last;
+                const d = param?.seriesData?.get(m.series) as
+                    | { value?: number }
+                    | undefined;
+                if (d && typeof d.value === 'number') v = d.value;
+                return {
+                    label: m.label,
+                    text: v === undefined ? '—' : fmtLegendVal(v),
+                    color: m.color,
+                };
+            });
+        });
+        setLegendValues(out);
+    };
+    const updateLegendRef = useRef(updateLegend);
+    updateLegendRef.current = updateLegend;
 
     // chart lifecycle
     useEffect(() => {
@@ -293,6 +349,16 @@ export function CandleChart({
         });
 
         chart.subscribeCrosshairMove((param) => {
+            // legend value readout follows the crosshair（rAF-throttled）
+            if (!legendRafRef.current) {
+                legendRafRef.current = true;
+                requestAnimationFrame(() => {
+                    legendRafRef.current = false;
+                    updateLegendRef.current(
+                        param.point ? param : undefined,
+                    );
+                });
+            }
             if (!param.point) return;
             const raw = candles.coordinateToPrice(param.point.y);
             if (raw === null) return;
@@ -594,9 +660,11 @@ export function CandleChart({
             ) as SeriesDataItemTypeMap['Line'][];
 
         let paneIdx = 1;
+        legendMetaRef.current = new Map();
         for (const inst of instances) {
             const def = DEF_BY_TYPE.get(inst.type);
             if (!def) continue;
+            if (inst.hidden) continue; // 眼睛關閉 — 保留設定不畫線
             const params: Record<string, number> = {};
             for (const p of def.params) {
                 params[p.key] = inst.params[p.key] ?? p.def;
@@ -609,15 +677,28 @@ export function CandleChart({
             }
             const pane = def.category === 'pane' ? paneIdx++ : 0;
             let firstSeries: ISeriesApi<'Line' | 'Histogram'> | null = null;
+            const metas: {
+                label: string;
+                color: string;
+                series: ISeriesApi<'Line' | 'Histogram'>;
+                last?: number;
+            }[] = [];
+            const lastVal = (pts: IndicatorPoint[]) => {
+                for (let i = pts.length - 1; i >= 0; i--) {
+                    if (pts[i]!.value !== undefined) return pts[i]!.value;
+                }
+                return undefined;
+            };
             for (const o of def.outputs) {
                 const pts = out[o.key];
                 if (!pts) continue;
-                const color = inst.colors[o.key] ?? o.color;
+                const st = outputStyle(inst, def, o.key);
+                if (!st.visible) continue;
                 if (o.kind === 'histogram') {
                     const s = chart.addSeries(
                         HistogramSeries,
                         {
-                            color,
+                            color: st.color,
                             priceLineVisible: false,
                             lastValueVisible: false,
                         },
@@ -633,17 +714,23 @@ export function CandleChart({
                                     ? p.value! >= 0
                                         ? colors.upVol
                                         : colors.downVol
-                                    : color,
+                                    : st.color,
                             })),
                     );
                     indSeriesRef.current.push(s);
                     firstSeries ??= s;
+                    metas.push({
+                        label: o.label,
+                        color: st.color,
+                        series: s,
+                        last: lastVal(pts),
+                    });
                 } else {
                     const s = chart.addSeries(
                         LineSeries,
                         {
-                            color,
-                            lineWidth: o.width ?? 1,
+                            color: st.color,
+                            lineWidth: st.width,
                             lineStyle:
                                 o.kind === 'dashed'
                                     ? LineStyle.Dashed
@@ -664,8 +751,15 @@ export function CandleChart({
                     s.setData(toLineData(pts));
                     indSeriesRef.current.push(s);
                     firstSeries ??= s;
+                    metas.push({
+                        label: o.label,
+                        color: st.color,
+                        series: s,
+                        last: lastVal(pts),
+                    });
                 }
             }
+            legendMetaRef.current.set(inst.id, metas);
             // reference levels（RSI 30/70、KD 20/80…）in the sub-pane
             if (pane > 0 && firstSeries && def.levels) {
                 for (const lv of def.levels) {
@@ -687,6 +781,7 @@ export function CandleChart({
         } catch {
             // pane API differences must never take the chart down
         }
+        updateLegendRef.current(); // seed legend with latest values
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dataVersion, instancesKey, themeKey]);
 
@@ -696,24 +791,32 @@ export function CandleChart({
     };
     const addIndicator = (type: string) => {
         commitInstances([...instances, newInstance(type)]);
-        setIndMenuOpen(false);
     };
     const removeIndicator = (id: string) => {
         if (settingsFor === id) setSettingsFor(null);
         commitInstances(instances.filter((i) => i.id !== id));
     };
-    const patchInstance = (
-        id: string,
-        patch: Partial<Pick<IndicatorInstance, 'params' | 'colors'>>,
-    ) => {
+    const patchInstance = (id: string, patch: Partial<IndicatorInstance>) => {
         commitInstances(
             instances.map((i) => (i.id === id ? { ...i, ...patch } : i)),
         );
     };
+    const openSettings = (id: string) => {
+        settingsSnapshotRef.current = JSON.stringify(instances);
+        setSettingsFor(id);
+    };
+    const cancelSettings = () => {
+        try {
+            const snap = JSON.parse(
+                settingsSnapshotRef.current,
+            ) as IndicatorInstance[];
+            commitInstances(snap);
+        } catch {
+            // snapshot unreadable — keep current state
+        }
+        setSettingsFor(null);
+    };
     const settingsInst = instances.find((i) => i.id === settingsFor) ?? null;
-    const settingsDef = settingsInst
-        ? DEF_BY_TYPE.get(settingsInst.type) ?? null
-        : null;
 
     // recalibrate the view — re-fit both axes after the user has panned or
     // dragged the price scale into a corner (issue #6: no reset control)
@@ -947,70 +1050,36 @@ export function CandleChart({
                         if (Number.isInteger(v) && v >= 1) setTradeQty(v);
                     }}
                 />
-                <div style={{ position: 'relative' }}>
-                    <button
-                        className={
-                            styles.modeBtn[
-                                instances.length > 0 ? 'active' : 'normal'
-                            ]
+                <button
+                    className={
+                        styles.modeBtn[
+                            instances.length > 0 ? 'active' : 'normal'
+                        ]
+                    }
+                    onClick={() => setPickerOpen(true)}
+                >
+                    指標{instances.length > 0 ? ` ${instances.length}` : ''}
+                </button>
+                {pickerOpen && (
+                    <IndicatorDialog
+                        instances={instances}
+                        palette={IND_PALETTE}
+                        onAdd={addIndicator}
+                        onClose={() => setPickerOpen(false)}
+                    />
+                )}
+                {settingsInst && (
+                    <IndicatorSettingsModal
+                        inst={settingsInst}
+                        palette={IND_PALETTE}
+                        onPatch={(patch) =>
+                            patchInstance(settingsInst.id, patch)
                         }
-                        onClick={() => setIndMenuOpen((o) => !o)}
-                    >
-                        指標{instances.length > 0 ? ` ${instances.length}` : ''}
-                    </button>
-                    {indMenuOpen && (
-                        <>
-                            <div
-                                className={styles.indBackdrop}
-                                onClick={() => setIndMenuOpen(false)}
-                            />
-                            <div className={styles.indMenu}>
-                                <div className={styles.indGroupTitle}>
-                                    主圖疊加
-                                </div>
-                                {INDICATOR_DEFS.filter(
-                                    (d) => d.category === 'overlay',
-                                ).map((d) => (
-                                    <button
-                                        key={d.type}
-                                        className={styles.indItem}
-                                        onClick={() => addIndicator(d.type)}
-                                    >
-                                        <span
-                                            className={styles.indSwatch}
-                                            style={{
-                                                background:
-                                                    d.outputs[0]!.color,
-                                            }}
-                                        />
-                                        {d.label}
-                                    </button>
-                                ))}
-                                <div className={styles.indGroupTitle}>
-                                    副圖指標
-                                </div>
-                                {INDICATOR_DEFS.filter(
-                                    (d) => d.category === 'pane',
-                                ).map((d) => (
-                                    <button
-                                        key={d.type}
-                                        className={styles.indItem}
-                                        onClick={() => addIndicator(d.type)}
-                                    >
-                                        <span
-                                            className={styles.indSwatch}
-                                            style={{
-                                                background:
-                                                    d.outputs[0]!.color,
-                                            }}
-                                        />
-                                        {d.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </div>
+                        onRemove={() => removeIndicator(settingsInst.id)}
+                        onCommit={() => setSettingsFor(null)}
+                        onCancel={cancelSettings}
+                    />
+                )}
             </div>
             <div ref={hostRef} className={styles.chartHost}>
                 {loading && (
@@ -1038,148 +1107,88 @@ export function CandleChart({
                     triggers.length > 0 ||
                     instances.length > 0) && (
                     <div className={styles.triggerList}>
-                        {instances.length > 0 && (
-                            <div className={styles.legendRow}>
-                                {instances.map((inst) => {
-                                    const def = DEF_BY_TYPE.get(inst.type);
-                                    const first = def?.outputs[0];
-                                    const color = first
-                                        ? inst.colors[first.key] ?? first.color
-                                        : '#8b94a7';
-                                    return (
-                                        <span
-                                            key={inst.id}
-                                            className={styles.legendChip}
-                                        >
-                                            <button
-                                                className={styles.legendName}
-                                                style={{ color }}
-                                                title='指標設定'
-                                                onClick={() =>
-                                                    setSettingsFor(
-                                                        settingsFor === inst.id
-                                                            ? null
-                                                            : inst.id,
-                                                    )
-                                                }
-                                            >
-                                                {instanceLabel(inst)}
-                                                <Settings2 size={9} />
-                                            </button>
-                                            <button
-                                                className={styles.legendClose}
-                                                title='移除指標'
-                                                onClick={() =>
-                                                    removeIndicator(inst.id)
-                                                }
-                                            >
-                                                <X size={9} />
-                                            </button>
-                                        </span>
-                                    );
-                                })}
-                            </div>
-                        )}
-                        {settingsInst && settingsDef && (
-                            <div className={styles.indSettings}>
-                                <div className={styles.indSettingsTitle}>
-                                    {settingsDef.label}
-                                    <button
-                                        className={styles.legendClose}
-                                        onClick={() => setSettingsFor(null)}
-                                    >
-                                        <X size={10} />
-                                    </button>
-                                </div>
-                                {settingsDef.params.map((p) => (
-                                    <label
-                                        key={p.key}
-                                        className={styles.setRow}
-                                    >
-                                        <span>{p.label}</span>
-                                        <input
-                                            type='number'
-                                            className={styles.setInput}
-                                            min={p.min}
-                                            max={p.max}
-                                            step={p.step ?? 1}
-                                            value={
-                                                settingsInst.params[p.key] ??
-                                                p.def
-                                            }
-                                            onChange={(e) => {
-                                                const v = Number(
-                                                    e.target.value,
-                                                );
-                                                if (!Number.isFinite(v)) {
-                                                    return;
-                                                }
-                                                patchInstance(
-                                                    settingsInst.id,
-                                                    {
-                                                        params: {
-                                                            ...settingsInst.params,
-                                                            [p.key]: Math.min(
-                                                                p.max,
-                                                                Math.max(
-                                                                    p.min,
-                                                                    v,
-                                                                ),
-                                                            ),
-                                                        },
-                                                    },
-                                                );
-                                            }}
-                                        />
-                                    </label>
-                                ))}
-                                {settingsDef.outputs.map((o) => (
-                                    <div
-                                        key={o.key}
-                                        className={styles.setRow}
-                                    >
-                                        <span>{o.label}</span>
-                                        <div className={styles.swatchRow}>
-                                            {IND_PALETTE.map((c) => (
-                                                <button
-                                                    key={c}
-                                                    className={
-                                                        styles.swatchBtn[
-                                                            (settingsInst
-                                                                .colors[
-                                                                o.key
-                                                            ] ?? o.color) === c
-                                                                ? 'active'
-                                                                : 'normal'
-                                                        ]
-                                                    }
-                                                    style={{ background: c }}
-                                                    onClick={() =>
-                                                        patchInstance(
-                                                            settingsInst.id,
-                                                            {
-                                                                colors: {
-                                                                    ...settingsInst.colors,
-                                                                    [o.key]: c,
-                                                                },
-                                                            },
-                                                        )
-                                                    }
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                                <button
-                                    className={styles.indDelete}
-                                    onClick={() =>
-                                        removeIndicator(settingsInst.id)
+                        {instances.map((inst) => {
+                            const def = DEF_BY_TYPE.get(inst.type);
+                            if (!def) return null;
+                            const vals = legendValues[inst.id] ?? [];
+                            const nameColor = outputStyle(
+                                inst,
+                                def,
+                                def.outputs[0]!.key,
+                            ).color;
+                            return (
+                                <div
+                                    key={inst.id}
+                                    className={
+                                        styles.legendItem[
+                                            inst.hidden ? 'hidden' : 'normal'
+                                        ]
                                     }
                                 >
-                                    移除指標
-                                </button>
-                            </div>
-                        )}
+                                    <button
+                                        className={styles.legendLabel}
+                                        style={{ color: nameColor }}
+                                        title='開啟指標設定'
+                                        onClick={() => openSettings(inst.id)}
+                                    >
+                                        {instanceLabel(inst)}
+                                    </button>
+                                    {!inst.hidden && (
+                                        <span className={styles.legendVals}>
+                                            {vals.map((v, i) => (
+                                                <span
+                                                    key={i}
+                                                    className={
+                                                        styles.legendVal
+                                                    }
+                                                    style={{ color: v.color }}
+                                                    title={v.label}
+                                                >
+                                                    {v.text}
+                                                </span>
+                                            ))}
+                                        </span>
+                                    )}
+                                    <span className={styles.legendCtrls}>
+                                        <button
+                                            className={styles.legendCtrlBtn}
+                                            title={
+                                                inst.hidden ? '顯示' : '隱藏'
+                                            }
+                                            onClick={() =>
+                                                patchInstance(inst.id, {
+                                                    hidden: !inst.hidden,
+                                                })
+                                            }
+                                        >
+                                            {inst.hidden ? (
+                                                <EyeOff size={11} />
+                                            ) : (
+                                                <Eye size={11} />
+                                            )}
+                                        </button>
+                                        <button
+                                            className={styles.legendCtrlBtn}
+                                            title='設定'
+                                            onClick={() =>
+                                                openSettings(inst.id)
+                                            }
+                                        >
+                                            <Settings2 size={11} />
+                                        </button>
+                                        <button
+                                            className={styles.legendCtrlBtn}
+                                            title='移除'
+                                            onClick={() =>
+                                                removeIndicator(inst.id)
+                                            }
+                                        >
+                                            <X size={11} />
+                                        </button>
+                                    </span>
+                                </div>
+                            );
+                        })}
                         {workingOrders.map((t) => {
                             const price =
                                 t.status.modified_price || t.order.price;
