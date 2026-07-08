@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 
 # Build output
 dist/
@@ -21,3 +22,9 @@ dist/
 src-tauri/target/
 src-tauri/binaries/
 src-tauri/gen/schemas/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
