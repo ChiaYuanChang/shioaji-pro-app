@@ -29,6 +29,7 @@ import { DebugPanel } from './components/debug-panel';
 import { GridTicket } from './components/grid-ticket';
 import { NoticeCenter } from './components/notice-center';
 import { FeatureGate } from './components/feature-gate';
+import { BacktestPanel } from './components/backtest-panel';
 import { OptPayoff } from './components/opt-payoff';
 import { SectorHeatmap } from './components/sector-heatmap';
 import { PnlPanel } from './components/pnl-panel';
@@ -47,6 +48,7 @@ import { usePoll } from './hooks/use-poll';
 import { useWatchlist } from './hooks/use-watchlist';
 import { trackActivity } from './lib/activity';
 import { agentModule, backtestModule } from './lib/features';
+import { resolveBacktestPanel } from './lib/backtest-gate';
 import { ensureContract, useContract } from './lib/contracts-cache';
 import { reportDailyPnl } from './lib/risk';
 import { isTauri, openPopout } from './lib/tauri';
@@ -217,13 +219,18 @@ function BlockBody({
         case 'heatmap':
             return <SectorHeatmap onPick={onSelectCode} />;
         case 'backtest': {
-            const BtPanel = backtestModule?.Panel;
-            return (
-                <FeatureGate feature='backtest'>
-                    {BtPanel ? (
-                        <BtPanel contract={contract} onPick={onSelectCode} />
-                    ) : null}
-                </FeatureGate>
+            // product-gate decision (BT-FE-001, see lib/backtest-gate.ts):
+            // closed desktop module -> unchanged VIP FeatureGate; absent
+            // (open builds) -> the open panel over the user-run backend,
+            // never the accidental desktop-only lock
+            const bt = resolveBacktestPanel(backtestModule, BacktestPanel);
+            const body = (
+                <bt.Panel contract={contract} onPick={onSelectCode} />
+            );
+            return bt.gated ? (
+                <FeatureGate feature='backtest'>{body}</FeatureGate>
+            ) : (
+                body
             );
         }
         case 'optpnl':

@@ -55,7 +55,7 @@ export const FEATURES: FeatureDef[] = [
         name: '策略回測',
         tier: 'vip',
         closed: true,
-        desc: '自寫策略（JS + ta 函式庫）、含成本回測引擎、多商品整合績效',
+        desc: '自寫策略（Python + ta 函式集）、含成本回測引擎、多商品整合績效',
     },
     // 之後要分級的功能（開源或閉源皆可）在這裡加一筆，UI 用
     // <FeatureGate feature='key'> 包起來即可
