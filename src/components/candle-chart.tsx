@@ -6,6 +6,7 @@ import {
     CandlestickSeries,
     ColorType,
     createChart,
+    createSeriesMarkers,
     HistogramSeries,
     LineSeries,
     LineStyle,
@@ -54,6 +55,11 @@ import {
 // side-effect import順序：custom-indicators 在 module 載入時就把已存的
 // 自訂指標註冊進 DEF_BY_TYPE，loadInstances() 的型別過濾才不會把它們丟掉
 import { subscribeCustoms } from '../lib/custom-indicators';
+import {
+    markersToSeriesMarkers,
+    snapMarkersToBars,
+    useBacktestRun,
+} from '../lib/backtest-chart';
 import type { IndicatorPoint } from '../lib/indicators';
 import { cancelOrder, fetchKbars, updateOrderPrice } from '../lib/shioaji';
 import { setPickedPrice } from '../lib/price-sync';
@@ -1140,6 +1146,36 @@ export function CandleChart({
             if (activeUp) document.removeEventListener('mouseup', activeUp, true);
         };
     }, []);
+
+    // backtest entry/exit markers (BT-FE-001): the open backtest panel
+    // publishes its latest done run; charts linked to the same symbol draw
+    // the fill markers. Wire times already use the wallClockToUtc encoding
+    // — identical to Candle.time — but backend intraday buckets are
+    // session-anchored (TAIFEX 60m: 08:45, 09:45, …) while chart candles
+    // are wall-clock floored (08:00, 09:00, …), so markers only overlay
+    // when the chart shows the run's own timeframe, snapped onto the
+    // chart's actual containing candles.
+    const btRun = useBacktestRun();
+    useEffect(() => {
+        const series = candleSeriesRef.current;
+        if (!series) return;
+        if (!btRun || btRun.code !== contract.code) return;
+        if (btRun.timeframe !== tf.label) return;
+        if (btRun.run.markers.length === 0) return;
+        const snapped = snapMarkersToBars(
+            markersToSeriesMarkers(btRun.run.markers, {
+                buy: colors.up,
+                sell: colors.down,
+            }),
+            barsRef.current.map((b) => b.time),
+        );
+        if (snapped.length === 0) return;
+        const markers = createSeriesMarkers(series, snapped);
+        return () => {
+            markers.detach();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [btRun, contract.code, tf.label, themeKey, dataVersion]);
 
     // draw trigger price lines on the candle series
     useEffect(() => {
